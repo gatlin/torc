@@ -44,64 +44,27 @@ interface Continuation<A, B = void> {
  * In other words a Site is an implementation of continuation passing style.
  * @example
  * ```typescript
- * // Expose stdin as a Site
- * import { Interface, createInterface } from "readline";
- * const stdin: Site<string> = shift((k) => {
- *   const iface: Interface = createInterface({
- *     input: process.stdin,
- *     output: process.stdout,
- *     terminal: false
- *   });
- *   iface.on("line", k);
- *   return () => {
- *     iface.close();
- *   }
- * });
- * // Transform stdin into a way to "prompt" the user for input.
- * function prompt(message: string): Site<string> {
- *   console.log(message);
- *   return prune()(stdin);
- * }
- * // A Site which times out with a given value after a given amount of time.
- * function timeoutMS(ms: number, value: unknown = undefined): Site<unknown> {
- *   return shift((k) => {
- *     const timer = setTimeout(() => void k(value), ms);
- *     return () => {
- *       clearTimeout(timer);
- *     };
- *   });
- * }
- * // A site prompting the user for their name, waiting 5 seconds.
- * const source: Site<string> = par([
- *   prompt("What is your name?"),
- *   timeoutMS(5000)
- * ]);
- * // Will be subscribed to the source and let us inspect it.
- * const accumulator = {
- *   results: 0,
- *   next(value: unknown) {
- *     console.log(`[${++this.results}]: ${JSON.stringify(value, null, 2)}`);
+ * const numbers: Site<number> = each([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+ * const xform = then((n: number) => pure(`squared => ${n * n}`));
+ * const reducer = {
+ *   count: 0,
+ *   next(response: string) {
+ *     console.log(++this.count, response);
  *   }
  * };
- * // If we get a timely answer, we will reply amiably.
- * const xform = pipe(
- *   prune(),
- *   map((name?: string) => "undefined" === typeof name
- *     ? "TOO SLOW"
- *     : `Hello, ${name}`));
- * xform(source).subscribe(accumulator);
+ * void xform(numbers).subscribe(reducer);
  * ```
  * @example
  * ```shell
- * > What is your name?
- * # you type Your Name
- * [1]: "Hello, Your Name"
- * ```
- * @example
- * ```shell
- * > What is your name?
- * # you take longer than 5 seconds
- * [1]: "TOO SLOW"
+ * 1 squared => 1
+ * 2 squared => 4
+ * 3 squared => 9
+ * 4 squared => 16
+ * 5 squared => 25
+ * 6 squared => 36
+ * 7 squared => 49
+ * 8 squared => 64
+ * 9 squared => 81
  * ```
  */
 class Site<A> {
@@ -253,7 +216,15 @@ function keep<A>(promise: Promise<A>): Site<A> {
  * result values.
  * @example
  * ```typescript
- * 
+ * void par([
+ *   pure("A"),
+ *   pure("B")
+ * ]).subscribe((v: string) => { console.log(v); });
+ * ```
+ * @example
+ * ```shell
+ * A
+ * B
  * ```
  */
 function par<A>(sites: Site<A>[]): Site<A> {
@@ -386,6 +357,12 @@ function filter<A>(fn: (value: A, index?: number) => boolean): Operator<A, A> {
  * @returns A new site which publishes one value.
  * @example
  * ```typescript
+ * const three: Site<number> = prune()(each([3, 2, 1]));
+ * three.subscribe((n: number) => void console.log(`n = ${n}`));
+ * ```
+ * @example
+ * ```shell
+ * n = 3
  * ```
  */
 function prune<A>(): Operator<A, A> {

@@ -1,6 +1,6 @@
 {
   "name": "torc",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "tools for working with asynchronous and reactive computations",
   "main": "./dist/commonjs/index.js",
   "module": "./dist/esm/index.js",
@@ -37,5 +37,8 @@
     "ts-node": "^9.1.1",
     "typedoc": "^0.22.14",
     "typescript": "^4.6.3"
+  },
+  "dependencies": {
+    "@types/node": "^17.0.33"
   }
 }

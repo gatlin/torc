@@ -21,6 +21,77 @@ npm install
 npm run coverage
 ```
 
+## Synopsis
+
+```typescript
+import { Site, shift, prune, par, pure, map } from "./index";
+import { Interface, createInterface } from "readline";
+import { pipe } from "ts-functional-pipe";
+
+const stdin: Site<string> = shift((k) => {
+  const iface: Interface = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: false
+  });
+  iface.on("line", k);
+  return () => {
+    iface.close();
+  }
+});
+
+function prompt(message: string): Site<string> {
+  console.log(message);
+  return prune()(stdin);
+}
+
+function timeoutMS(ms: number, value: unknown = undefined): Site<unknown> {
+  return shift((k) => {
+    const timer = setTimeout(() => void k(value), ms);
+    return () => {
+      clearTimeout(timer);
+    };
+  });
+}
+
+const source: Site<string> = par([
+  prompt("What is your name?"),
+  timeoutMS(5000)
+]);
+
+const xform = pipe(
+  prune(),
+  map((name?: string) => "undefined" === typeof name
+    ? "TOO SLOW"
+    : `Hello, ${name}`)
+);
+
+const accumulator = {
+  results: 0,
+  next(value: unknown) {
+    console.log(`[${++this.results}]: ${JSON.stringify(value, null, 2)}`);
+  }
+};
+
+xform(source).subscribe(accumulator);
+```
+
+This will prompt you to enter your name ...
+
+```shell
+$> What is your name?
+# ... you type "Your Name" ...
+[1]: "Hello, Your Name"
+```
+
+... but it will only wait for 5 seconds:
+
+```shell
+$> What is your name?
+# ... you take 5 seconds or longer ...
+[1]: "TOO SLOW"
+```
+
 ## Overview
 
 Torc explores the role of [delimited continuations][delimcc] in reactive
@@ -59,6 +130,6 @@ feature on Github!
 [rxjs]: //rxjs.dev
 [delimcc]: http://okmij.org/ftp/continuations/#tutorial
 [comonads]: https://bartoszmilewski.com/2017/01/02/comonads/
-[torcdocs]: https://niltag.net/code/torc
+[torcdocs]: https://niltag.net/code/torc/modules.html
 [orclang]: https://orc.csres.utexas.edu/
 [nvm]: https://github.com/nvm-sh/nvm
