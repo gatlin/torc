@@ -211,6 +211,7 @@ function keep<A>(promise: Promise<A>): Site<A> {
 }
 
 /**
+ * Merges, concurrently, multiple {@link Site | sites} into one.
  * @category Site constructor
  * @param sites - The sites whose results are to b
  * @returns A site which executes multiple sites in parallel and merges their
@@ -219,13 +220,15 @@ function keep<A>(promise: Promise<A>): Site<A> {
  * ```typescript
  * void par([
  *   pure("A"),
- *   pure("B")
+ *   pure("B"),
+ *   pure("C")
  * ]).subscribe((v: string) => { console.log(v); });
  * ```
  * @example
  * ```shell
  * A
  * B
+ * C
  * ```
  */
 function par<A>(sites: Site<A>[]): Site<A> {

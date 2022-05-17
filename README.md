@@ -62,16 +62,16 @@ const sink = {
   }
 };
 void source.subscribe(sink);
-/*
-Example session:
+```
+
+```shell
 $> ts-node synopsis.ts
-> What is your name?
+> Hello! What is your name?
 Gatlin
-> Hello, Gatlin! How old are you?
+> Charmed, Gatlin! How old are you?
 33
 Wow! That is 231 in dog years!
-[1]
-*/
+[1] 
 ```
 
 ## Overview
