@@ -44,9 +44,10 @@ interface Continuation<A, B = void> {
  * In other words a Site is an implementation of continuation passing style.
  * @example
  * ```typescript
- * const numbers: Site<number> = each([1, 2, 3, 4, 5, 6, 7, 8, 9]);
- * const xform = then((n: number) => pure(`squared => ${n * n}`));
- * const reducer = {
+ * // A contrived example of a source, sink, and operator all together.
+ * const source: Site<number> = each([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+ * const xform = map((n: number) => `squared => ${n * n}`);
+ * const sink = {
  *   count: 0,
  *   next(response: string) {
  *     console.log(++this.count, response);
@@ -122,15 +123,14 @@ class Site<A> {
  * simpleSite value: 4
  * ```
  */
-function pure<A>(value: A): Site<A> {
+function pure<A>(value?: A): Site<A> {
   return new Site((c) => {
     c.next(value);
   });
 }
 
 /**
- * Creates a {@link Site} from an `Iterable` object which publishes each of its
- * values exactly once.
+ * Create a {@link Site} which publishes each value of an `Iterable` object.
  * @category Site constructor
  * @public
  * @example
@@ -211,6 +211,7 @@ function keep<A>(promise: Promise<A>): Site<A> {
 }
 
 /**
+ * @category Site constructor
  * @param sites - The sites whose results are to b
  * @returns A site which executes multiple sites in parallel and merges their
  * result values.
@@ -243,7 +244,7 @@ function par<A>(sites: Site<A>[]): Site<A> {
 }
 
 /**
- * Useful for writing programs in (delimited) continuation-passing style.
+ * Construct a site using a (delimited) continuation passing idiom.
  * @param fn - A function whose argument is a delimited continuation.
  * @returns A {@link Site}.
  * @category Site constructor
@@ -251,15 +252,14 @@ function par<A>(sites: Site<A>[]): Site<A> {
  * @example
  * ```typescript
  * shift(times2 => {
- *   const six = times2(3);                                 // [1]
- *   return times2(six);
+ *   const six = times2(3);
+ *   times2(six);
  * }).subscribe({
  *   next(three_then_six: number): number {
  *     console.log(`three_then_six = ${three_then_six}`);
- *     return three_then_six * 2;                           // [2]
+ *     return three_then_six * 2;
  *   }
  * });
- * // Note: The value returned by [2] is returned at [1].
  * ```
  * @example
  * ```shell
@@ -355,6 +355,7 @@ function filter<A>(fn: (value: A, index?: number) => boolean): Operator<A, A> {
  * An {@link Operator} which commutes a {@link Site} to one result value
  * before {@link Activity.finish | finishing}.
  * @returns A new site which publishes one value.
+ * @category Operator
  * @example
  * ```typescript
  * const three: Site<number> = prune()(each([3, 2, 1]));
@@ -451,8 +452,6 @@ class Wire<A> extends Site<A> implements Activity, Continuation<A> {
   /**
    * Flag indicating whether the wire has finished execution.
    * @public
-   * @privateRemarks
-   * Implemented as a getter to enforce readonly access at runtime.
    */
   get done(): boolean {
     return this._done;
@@ -502,9 +501,6 @@ class Signal<A> extends Wire<A> implements Activity, Continuation<A> {
     /**
      * @internal
      * @see {@link Signal.value}
-     * @privateRemarks
-     * This value must ultimately be mutable but access must be carefully
-     * controlled.
      */
     protected _value: A
   ) {
@@ -513,9 +509,6 @@ class Signal<A> extends Wire<A> implements Activity, Continuation<A> {
 
   /**
    * @public
-   * @privateRemarks
-   * Implemented as a getter to enforce readonly access to the actual reference
-   * at runtime.
    */
   get value(): A {
     return this._value;
@@ -538,7 +531,7 @@ class Signal<A> extends Wire<A> implements Activity, Continuation<A> {
    * internal {@link Signal.value | value}.
    */
   next(newValue: A): unknown {
-    if (this.done || !newValue) {
+    if (this.done) {
       return;
     }
     super.next((this._value = newValue));
@@ -561,4 +554,5 @@ export {
   prune
 };
 
+// eslint-disable-next-line
 export type { Activity, Continuation, Operator };

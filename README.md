@@ -11,25 +11,25 @@
 *The author recommends [nvm][nvm] but is not affiliated with it in any way.*
 
 1. Make sure you're using the correct node version (`nvm use`).
-2. Install the dependencies (`npm install`)
+2. Install the dependencies (`npm ci`)
 3. (optionally) Run the tests locally (`npm run coverage`).
 
 ```shell
 git checkout https://github.com/gatlin/torc.git && cd torc
 nvm use
-npm install
+npm ci 
 npm run coverage
 ```
 
 ## Synopsis
 
 ```typescript
-import { Site, shift, prune, par, pure, map } from "./index";
-import { Interface, createInterface } from "readline";
+import { Site, shift, prune, then, pure } from "./index";
+import { createInterface } from "readline";
 import { pipe } from "ts-functional-pipe";
-
+// Create a new Site publishing lines from stdin.
 const stdin: Site<string> = shift((k) => {
-  const iface: Interface = createInterface({
+  const iface = createInterface({
     input: process.stdin,
     output: process.stdout,
     terminal: false
@@ -39,57 +39,39 @@ const stdin: Site<string> = shift((k) => {
     iface.close();
   }
 });
-
+// Displays a message and publishes the first reply to stdin.
 function prompt(message: string): Site<string> {
-  console.log(message);
+  console.log(`> ${message}`);
   return prune()(stdin);
 }
-
-function timeoutMS(ms: number, value: unknown = undefined): Site<unknown> {
-  return shift((k) => {
-    const timer = setTimeout(() => void k(value), ms);
-    return () => {
-      clearTimeout(timer);
-    };
-  });
-}
-
-const source: Site<string> = par([
-  prompt("What is your name?"),
-  timeoutMS(5000)
-]);
-
-const xform = pipe(
-  prune(),
-  map((name?: string) => "undefined" === typeof name
-    ? "TOO SLOW"
-    : `Hello, ${name}`)
-);
-
-const accumulator = {
-  results: 0,
-  next(value: unknown) {
-    console.log(`[${++this.results}]: ${JSON.stringify(value, null, 2)}`);
+// A reactive pipeline with side-effects.
+const source = pipe(
+  then((greeting) => prompt(`${greeting}! What is your name?`)),
+  then((name) => prompt(`Charmed, ${name}! How old are you?`)),
+  then((ageS) => {
+    const age = parseInt(ageS, 10);
+    console.log(`Wow! That is ${age*7} in dog years!`);
+    return pure();
+  })
+)(pure("Hello"));
+// A sink for the values coming out of the pipe.
+const sink = {
+  counter: 0,
+  next(result: unknown) {
+    console.log(`[${++this.counter}] ${result ?? ""}`);
   }
 };
-
-xform(source).subscribe(accumulator);
-```
-
-This will prompt you to enter your name ...
-
-```shell
-$> What is your name?
-# ... you type "Your Name" ...
-[1]: "Hello, Your Name"
-```
-
-... but it will only wait for 5 seconds:
-
-```shell
-$> What is your name?
-# ... you take 5 seconds or longer ...
-[1]: "TOO SLOW"
+void source.subscribe(sink);
+/*
+Example session:
+$> ts-node synopsis.ts
+> What is your name?
+Gatlin
+> Hello, Gatlin! How old are you?
+33
+Wow! That is 231 in dog years!
+[1]
+*/
 ```
 
 ## Overview
