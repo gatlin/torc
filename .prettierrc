@@ -1,5 +1,6 @@
 {
   trailingComma: "none",
-  offsetTernaryExpressions: true,
-  breakBeforeElse: true
+  "offsetTernaryExpressions": true,
+  "breakBeforeElse": true,
+  "printWidth": 80
 }

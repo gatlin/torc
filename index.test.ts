@@ -43,7 +43,7 @@ test("a site generates an activity which finishes as expected", (t) => {
   const a: Activity = s1.subscribe({
     next(n: number) {
       total += n;
-    },
+    }
   });
   t.equal(total, 6);
   t.ok("finish" in a);
@@ -56,12 +56,12 @@ test("a site may return an Activity directly", (t) => {
     return {
       finish() {
         t.end();
-      },
+      }
     };
   }).subscribe({
     next() {
       return;
-    },
+    }
   });
   t.ok("finish" in act);
   act.finish();
@@ -94,7 +94,7 @@ test("pure creates a site from a non-site value", (t) => {
     next(five: number) {
       t.equal(five, 5);
       t.end();
-    },
+    }
   }).finish();
 });
 
@@ -107,7 +107,7 @@ test("a wire publishes its value to all clients correctly", (t) => {
       if (2 === ++this.count) {
         t.end();
       }
-    },
+    }
   };
   w1.subscribe(checker);
   const w2 = new Wire<number>();
@@ -118,14 +118,14 @@ test("a wire publishes its value to all clients correctly", (t) => {
 
 test("a wire stops when it has been finished", (t) => {
   const w = new Wire<number>();
-  t.same(w.done,false);
+  t.same(w.done, false);
   w.finish();
-  t.same(w.done,true);
+  t.same(w.done, true);
   let canary = true;
   w.subscribe({
     next() {
       canary = false;
-    },
+    }
   });
   new Site((cont) => {
     cont.next(1);
@@ -225,7 +225,7 @@ test("map operator", (t) => {
       next(v: boolean) {
         t.equal(v, toggle);
         toggle = !toggle;
-      },
+      }
     })
     .finish();
 });
@@ -246,7 +246,7 @@ test("filter operator", (t) => {
     .subscribe({
       next(n: number) {
         t.ok(0 === n % 2);
-      },
+      }
     })
     .finish();
 });
@@ -266,7 +266,7 @@ test("join operator", (t) => {
     .subscribe({
       next(n: number) {
         t.equal(n, 4);
-      },
+      }
     })
     .finish();
 });
@@ -278,17 +278,19 @@ test("keep", (t) => {
     next(isEven: boolean) {
       t.ok(isEven);
       t.end();
-    },
+    }
   });
 });
 
 test("kept promise is cancellable", async (t) => {
   let flag = false;
-  const promiseSite = keep(new Promise((resolve) => {
-    setTimeout(() => {
-      resolve("test");
-    }, 2000);
-  }));
+  const promiseSite = keep(
+    new Promise((resolve) => {
+      setTimeout(() => {
+        resolve("test");
+      }, 2000);
+    })
+  );
   const activity = promiseSite.subscribe({
     next(msg: string) {
       t.equal(msg, "test");
@@ -310,7 +312,7 @@ test("each", (t) => {
     count: 0,
     next(n: number) {
       t.equal(n, ++this.count);
-    },
+    }
   };
   const act: Activity = s.subscribe(checker);
   t.ok("finish" in act);
@@ -333,24 +335,28 @@ test("then", (t) => {
       t.end();
     };
   });
-  const op1: Operator<number,number> = then((n: number): Site<number> => {
-    return new Site((c) => {
-      if (0 === n % 2) {
-        c.next(n);
-      }
-    });
-  });
-  const op2: Operator<number,string> = then((n) => pure(`${n} is even`));
-  op2(op1(s)).subscribe({
-    next(msg: string) {
-      t.equal(msg, `${sequence[index++]} is even`);
+  const op1: Operator<number, number> = then(
+    (n: number): Site<number> => {
+      return new Site((c) => {
+        if (0 === n % 2) {
+          c.next(n);
+        }
+      });
     }
-  }).finish();
+  );
+  const op2: Operator<number, string> = then((n) => pure(`${n} is even`));
+  op2(op1(s))
+    .subscribe({
+      next(msg: string) {
+        t.equal(msg, `${sequence[index++]} is even`);
+      }
+    })
+    .finish();
 });
 
 test("shift", (t) => {
   let toggled = false;
-  shift(times2 => {
+  shift((times2) => {
     const six = times2(3);
     return times2(six);
   }).subscribe({
@@ -369,11 +375,7 @@ test("shift", (t) => {
 });
 
 test("par merges multiple sites into one", (t) => {
-  const s: Site<number> = par([
-    pure(4),
-    pure(3),
-    timeoutMS(3000, 1)
-  ]);
+  const s: Site<number> = par([pure(4), pure(3), timeoutMS(3000, 1)]);
   const checker = {
     count: 0,
     total: 0,

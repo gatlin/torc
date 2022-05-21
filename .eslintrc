@@ -1,20 +1,19 @@
 {
   "root": true,
   "parser": "@typescript-eslint/parser",
-  "plugins": ["@typescript-eslint","eslint-plugin-tsdoc"],
+  "plugins": ["@typescript-eslint", "prettierx"],
   "ignorePatterns": ["dist/**/*", "**/*.test.ts", "example.ts"],
   "extends": [
     "eslint:recommended",
     "plugin:@typescript-eslint/eslint-recommended",
     "plugin:@typescript-eslint/recommended",
-    "prettier"
+    "plugin:prettierx/default"
   ],
   "rules": {
     "quotes": ["error", "double"],
-    "indent": ["error", 2],
+    "indent": "off",
     "no-unused-vars": "off",
     "@typescript-eslint/no-unused-vars": "error",
-    "comma-dangle": ["error","never"],
-    "tsdoc/syntax": "warn"
+    "comma-dangle": ["error","never"]
   }
 }
