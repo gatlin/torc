@@ -53,7 +53,7 @@ interface Continuation<A, B = void> {
  *     console.log(++this.count, response);
  *   }
  * };
- * void xform(numbers).subscribe(reducer);
+ * void xform(numbers).subscribe(sink);
  * ```
  * @example
  * ```shell
@@ -111,11 +111,9 @@ class Site<A> {
  * @example
  * ```typescript
  * const simpleSite = pure(4);
- * simpleSite.subscribe({
- *   next(n: number) {
- *     console.log(`simpleSite value: ${n}`);
- *   }
- * });
+ * simpleSite.subscribe((n: number) =>
+ *   void console.log(`simpleSite value: ${n}`)
+ * );
  * ```
  * @example
  * ```shell
@@ -136,11 +134,9 @@ function pure<A>(value?: A): Site<A> {
  * @example
  * ```typescript
  * const arraySite = each([1, 2, 3]);
- * arraySite.subscribe({
- *   next(n: number) {
- *     console.log(`received: ${n}`);
- *   }
- * });
+ * arraySite.subscribe(
+ *   (n: number) => void console.log(`received: ${n}`)
+ * );
  * ```
  * @example
  * ```shell
@@ -184,11 +180,9 @@ function each<A>(it: Iterable<A>): Site<A> {
  *     resolve("hello from 2 seconds ago");
  *   }, 2000);
  * }));
- * const activity = promiseSite.subscribe({
- *   next(msg: string) {
- *     console.log(msg);
- *   }
- * });
+ * const activity = promiseSite.subscribe(
+ *   (msg: string) => void console.log(msg)
+ * );
  * ```
  * @example
  * ```shell
@@ -222,7 +216,7 @@ function keep<A>(promise: Promise<A>): Site<A> {
  *   pure("A"),
  *   pure("B"),
  *   pure("C")
- * ]).subscribe((v: string) => { console.log(v); });
+ * ]).subscribe((v: string) => void console.log(v));
  * ```
  * @example
  * ```shell
@@ -231,6 +225,7 @@ function keep<A>(promise: Promise<A>): Site<A> {
  * C
  * ```
  */
+
 function par<A>(sites: Site<A>[]): Site<A> {
   return new Site((continuation) => {
     const activities: Activity[] = [];
@@ -256,13 +251,13 @@ function par<A>(sites: Site<A>[]): Site<A> {
  * ```typescript
  * shift(times2 => {
  *   const six = times2(3);
- *   times2(six);
- * }).subscribe({
- *   next(three_then_six: number): number {
+ *   void times2(six);
+ * }).subscribe(
+ *   (three_then_six: number): number => {
  *     console.log(`three_then_six = ${three_then_six}`);
  *     return three_then_six * 2;
  *   }
- * });
+ * );
  * ```
  * @example
  * ```shell
@@ -326,7 +321,18 @@ function join<A>(): Operator<Site<A>, A> {
  * @see {@link Operator}
  * @category Operator
  * @public
- * @see {@link Site} for an example of `then` in action.
+ * @example
+ * ```typescript
+ * const xform = then(each);
+ * void xform(pure([1, 2, 3])).subscribe((n) => void console.log(`n = ${n}`));
+ * ```
+ * @example
+ * ```shell
+ * # prints
+ * n = 1
+ * n = 2
+ * n = 3
+ * ```
  */
 function then<A, B>(fn: (a: A) => Site<B>): Operator<A, B> {
   return (source) => join()(map(fn)(source));
@@ -362,7 +368,7 @@ function filter<A>(fn: (value: A, index?: number) => boolean): Operator<A, A> {
  * @example
  * ```typescript
  * const three: Site<number> = prune()(each([3, 2, 1]));
- * three.subscribe((n: number) => void console.log(`n = ${n}`));
+ * void three.subscribe((n: number) => void console.log(`n = ${n}`));
  * ```
  * @example
  * ```shell
@@ -419,14 +425,10 @@ function prune<A>(): Operator<A, A> {
  */
 class Wire<A> extends Site<A> implements Activity, Continuation<A> {
   /**
-   * @internal
    * @see {@link Wire.done}
    */
   protected _done = false;
 
-  /**
-   * @internal
-   */
   protected _subscribers: Continuation<A, unknown>[] = [];
 
   /**
@@ -467,12 +469,12 @@ class Wire<A> extends Site<A> implements Activity, Continuation<A> {
   }
 
   next(value: A): void {
-    if (this.done) {
-      return;
+    if (!this.done) {
+      this._subscribers
+        .slice()
+        .forEach((cont: Continuation<A, unknown>): unknown => cont.next(value));
     }
-    this._subscribers
-      .slice()
-      .map((cont: Continuation<A, unknown>): unknown => cont.next(value));
+    return;
   }
 }
 
@@ -502,7 +504,6 @@ class Signal<A> extends Wire<A> implements Activity, Continuation<A> {
    */
   constructor(
     /**
-     * @internal
      * @see {@link Signal.value}
      */
     protected _value: A
@@ -510,9 +511,6 @@ class Signal<A> extends Wire<A> implements Activity, Continuation<A> {
     super();
   }
 
-  /**
-   * @public
-   */
   get value(): A {
     return this._value;
   }
