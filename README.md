@@ -24,9 +24,16 @@ npm run coverage
 ## Synopsis
 
 ```typescript
-import { Site, shift, prune, then, pure } from "./index";
+import { Site, shift, prune, then, pure, par, each } from "./index";
 import { createInterface } from "readline";
 import { pipe } from "ts-functional-pipe";
+// Publishes either `undefined` or a specified value after a given delay.
+function timerMS(delayMS: number, value?: unknown): Site<unknown> {
+  return shift((k) => {
+    const timer = setTimeout(() => void k(value ?? undefined), delayMS);
+    return () => void clearTimeout(timer);
+  });
+}
 // Create a new Site publishing lines from stdin.
 const stdin: Site<string> = shift((k) => {
   const iface = createInterface({
@@ -37,28 +44,37 @@ const stdin: Site<string> = shift((k) => {
   iface.on("line", k);
   return () => {
     iface.close();
-  }
+  };
 });
 // Displays a message and publishes the first reply to stdin.
 function prompt(message: string): Site<string> {
-  console.log(`> ${message}`);
+  console.log(`< ${message}`);
   return prune()(stdin);
 }
+// Runs a prompt and 5s timer concurrently, publishes first result.
+const impatientPrompt = (message: string): Site<string> =>
+  prune()(par([prompt(message), timerMS(5000)]));
 // A reactive pipeline with side-effects.
 const source = pipe(
-  then((greeting) => prompt(`${greeting}! What is your name?`)),
-  then((name) => prompt(`Charmed, ${name}! How old are you?`)),
-  then((ageS) => {
-    const age = parseInt(ageS, 10);
-    console.log(`Wow! That is ${age*7} in dog years!`);
-    return pure();
-  })
-)(pure("Hello"));
+  then(() => impatientPrompt("Hello! What is your name?")),
+  then((name: string) =>
+    prompt(
+      !name
+        ? "Anonymity is fine, too. How old are you?"
+        : `Charmed, ${name}! How old are you?`
+    )
+  ),
+  then((ageS: string) => {
+    console.log(`Wow! That is ${parseInt(ageS, 10) * 7} in dog years!`);
+    return each(Array(parseInt(ageS, 10)));
+  }),
+  then(() => pure("Happy belated birthday!"))
+)(pure());
 // A sink for the values coming out of the pipe.
 const sink = {
   counter: 0,
   next(result: unknown) {
-    console.log(`[${++this.counter}] ${result ?? ""}`);
+    console.log(`[Year: ${++this.counter}] ${result}`); 
   }
 };
 void source.subscribe(sink);
@@ -71,9 +87,24 @@ Gatlin
 > Charmed, Gatlin! How old are you?
 33
 Wow! That is 231 in dog years!
-[1] 
+[Year: 1] Happy belated birthday!
+[Year: 2] Happy belated birthday!
+# ... skip a few lines ...
+[Year: 32] Happy belated birthday!
+[Year: 33] Happy belated birthday!
 ```
 
+```shell
+$> ts-node synopsis.ts
+> Hello! What is your name?
+# ... 5 seconds pass without a response ...
+> Anonymity is fine, too. How old are you?
+3
+Wow! That is 21 in dog years!
+[Year: 1] Happy belated birthday!
+[Year: 2] Happy belated birthday!
+[Year: 3] Happy belated birthday!
+```
 ## Overview
 
 Torc explores the role of [delimited continuations][delimcc] in reactive
