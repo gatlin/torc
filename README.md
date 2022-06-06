@@ -24,36 +24,35 @@ npm run coverage
 ## Synopsis
 
 ```typescript
-import { Site, shift, prune, then, pure, par, each } from "./index";
+import { Site, prune, then } from "./index";
 import { createInterface } from "readline";
 import { pipe } from "ts-functional-pipe";
+
 // Publishes either `undefined` or a specified value after a given delay.
 function timerMS(delayMS: number, value?: unknown): Site<unknown> {
-  return shift((k) => {
-    const timer = setTimeout(() => void k(value ?? undefined), delayMS);
+  return Site.shift((k) => {
+    const timer = setTimeout(() => void k(value), delayMS);
     return () => void clearTimeout(timer);
   });
 }
+
 // Create a new Site publishing lines from stdin.
-const stdin: Site<string> = shift((k) => {
-  const iface = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    terminal: false
-  });
-  iface.on("line", k);
-  return () => {
-    iface.close();
-  };
+const stdin = Site.shift<string>((handleLine) => {
+  const iface = createInterface({ input: process.stdin });
+  void iface.on("line", handleLine);
+  return () => void iface.close();
 });
+
 // Displays a message and publishes the first reply to stdin.
 function prompt(message: string): Site<string> {
   console.log(`< ${message}`);
   return prune()(stdin);
 }
-// Runs a prompt and 5s timer concurrently, publishes first result.
+
+// Prompt which short-circuits with `undefined` after 5 seconds.
 const impatientPrompt = (message: string): Site<string> =>
-  prune()(par([prompt(message), timerMS(5000)]));
+  prune()(Site.par([prompt(message), timerMS(5000)]));
+
 // A reactive pipeline with side-effects.
 const source = pipe(
   then(() => impatientPrompt("Hello! What is your name?")),
@@ -66,17 +65,20 @@ const source = pipe(
   ),
   then((ageS: string) => {
     console.log(`Wow! That is ${parseInt(ageS, 10) * 7} in dog years!`);
-    return each(Array(parseInt(ageS, 10)));
+    return Site.each(Array(parseInt(ageS, 10)));
   }),
-  then(() => pure("Happy belated birthday!"))
-)(pure());
+  then(() => Site.pure("Happy belated birthday!"))
+)(Site.pure());
+
 // A sink for the values coming out of the pipe.
 const sink = {
   counter: 0,
   next(result: unknown) {
-    console.log(`[Year: ${++this.counter}] ${result}`); 
+    console.log(`[Year: ${++this.counter}] ${result}`);
+    return;
   }
 };
+
 void source.subscribe(sink);
 ```
 

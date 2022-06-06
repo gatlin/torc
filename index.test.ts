@@ -6,19 +6,14 @@ import {
   map,
   filter,
   join,
-  pure,
-  keep,
-  each,
   then,
-  shift,
-  par,
   prune
 } from "./index";
 import type { Activity, Operator } from "./index";
 
 // Utility site for at least 1 test.
 function timeoutMS(ms: number, value: unknown = undefined): Site<unknown> {
-  return shift((k) => {
+  return Site.shift((k) => {
     const timer = setTimeout(() => {
       k(value);
     }, ms);
@@ -30,10 +25,10 @@ function timeoutMS(ms: number, value: unknown = undefined): Site<unknown> {
 
 test("a site generates an activity which finishes as expected", (t) => {
   let total = 0;
-  const s1 = new Site((cont) => {
-    cont.next(3);
-    cont.next(2);
-    cont.next(1);
+  const s1 = Site.shift((cont) => {
+    cont(3);
+    cont(2);
+    cont(1);
     return () => {
       t.equal(total, 6);
       t.end();
@@ -50,29 +45,12 @@ test("a site generates an activity which finishes as expected", (t) => {
   a.finish();
 });
 
-test("a site may return an Activity directly", (t) => {
-  const act: Activity = new Site((cont) => {
-    t.ok("next" in cont);
-    return {
-      finish() {
-        t.end();
-      }
-    };
-  }).subscribe({
-    next() {
-      return;
-    }
-  });
-  t.ok("finish" in act);
-  act.finish();
-});
-
 test("a site also subscribes unary functions", (t) => {
   let total = 0;
-  const s1 = new Site<number>((cont) => {
-    cont.next(3);
-    cont.next(2);
-    cont.next(1);
+  const s1: Site<number> = Site.shift((cont) => {
+    cont(3);
+    cont(2);
+    cont(1);
     return () => {
       t.equal(total, 6);
       t.end();
@@ -89,7 +67,7 @@ test("a site also subscribes unary functions", (t) => {
 });
 
 test("pure creates a site from a non-site value", (t) => {
-  const s: Site<number> = pure(5);
+  const s: Site<number> = Site.pure(5);
   s.subscribe({
     next(five: number) {
       t.equal(five, 5);
@@ -127,8 +105,8 @@ test("a wire stops when it has been finished", (t) => {
       canary = false;
     }
   });
-  new Site((cont) => {
-    cont.next(1);
+  Site.shift((cont) => {
+    cont(1);
     return () => {
       t.ok(canary);
       t.end();
@@ -209,9 +187,9 @@ test("a signal subscribes unary functions correctly", (t) => {
 
 test("map operator", (t) => {
   let toggle = true;
-  const nums: Site<number> = new Site((cont) => {
+  const nums: Site<number> = Site.shift((cont) => {
     for (let i = 0; i < 10; ++i) {
-      cont.next(i);
+      cont(i);
     }
     return () => {
       t.end();
@@ -231,9 +209,9 @@ test("map operator", (t) => {
 });
 
 test("filter operator", (t) => {
-  const nums: Site<number> = new Site((cont) => {
+  const nums: Site<number> = Site.shift((cont) => {
     for (let i = 0; i < 10; ++i) {
-      cont.next(i);
+      cont(i);
     }
     return () => {
       t.end();
@@ -252,10 +230,10 @@ test("filter operator", (t) => {
 });
 
 test("join operator", (t) => {
-  const s1 = new Site<Site<number>>((outer) => {
-    outer.next(
-      new Site((inner) => {
-        inner.next(4);
+  const s1: Site<Site<number>> = Site.shift((outer) => {
+    outer(
+      Site.shift((inner) => {
+        inner(4);
       })
     );
     return () => {
@@ -273,7 +251,7 @@ test("join operator", (t) => {
 
 test("keep", (t) => {
   const fn = async (n: number): Promise<boolean> => 0 === n % 2;
-  const s: Site<boolean> = keep(fn(4));
+  const s: Site<boolean> = Site.keep(fn(4));
   s.subscribe({
     next(isEven: boolean) {
       t.ok(isEven);
@@ -284,7 +262,7 @@ test("keep", (t) => {
 
 test("kept promise is cancellable", async (t) => {
   let flag = false;
-  const promiseSite = keep(
+  const promiseSite = Site.keep(
     new Promise((resolve) => {
       setTimeout(() => {
         resolve("test");
@@ -307,7 +285,7 @@ test("kept promise is cancellable", async (t) => {
 });
 
 test("each", (t) => {
-  const s: Site<number> = each([1, 2, 3]);
+  const s: Site<number> = Site.each([1, 2, 3]);
   const checker = {
     count: 0,
     next(n: number) {
@@ -327,9 +305,9 @@ test("each can be cancelled", (t) => {
 test("then", (t) => {
   const sequence = [0, 2, 4, 6, 8];
   let index = 0;
-  const s: Site<number> = new Site((c) => {
+  const s: Site<number> = Site.shift((c) => {
     for (let i = 0; i < 10; i++) {
-      c.next(i);
+      c(i);
     }
     return () => {
       t.end();
@@ -337,14 +315,14 @@ test("then", (t) => {
   });
   const op1: Operator<number, number> = then(
     (n: number): Site<number> => {
-      return new Site((c) => {
+      return Site.shift((c) => {
         if (0 === n % 2) {
-          c.next(n);
+          c(n);
         }
       });
     }
   );
-  const op2: Operator<number, string> = then((n) => pure(`${n} is even`));
+  const op2: Operator<number, string> = then((n) => Site.pure(`${n} is even`));
   op2(op1(s))
     .subscribe({
       next(msg: string) {
@@ -356,7 +334,7 @@ test("then", (t) => {
 
 test("shift", (t) => {
   let toggled = false;
-  shift((times2) => {
+  Site.shift((times2) => {
     const six = times2(3);
     return times2(six);
   }).subscribe({
@@ -375,7 +353,7 @@ test("shift", (t) => {
 });
 
 test("par merges multiple sites into one", (t) => {
-  const s: Site<number> = par([pure(4), pure(3), timeoutMS(3000, 1)]);
+  const s: Site<number> = Site.par([Site.pure(4), Site.pure(3), timeoutMS(3000, 1)]);
   const checker = {
     count: 0,
     total: 0,
@@ -398,7 +376,7 @@ test("par merges multiple sites into one", (t) => {
 });
 
 test("prune commutes a Site to 1 value", (t) => {
-  const s: Site<number> = each([1, 2, 3]);
+  const s: Site<number> = Site.each([1, 2, 3]);
   const checker = {
     count: 0,
     next(value: number) {

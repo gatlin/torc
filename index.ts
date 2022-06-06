@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/explicit-module-boundary-types */
 /**
  * Tools for Orchestrating Reactive Computations
  * @packageDocumentation
@@ -45,7 +44,7 @@ interface Continuation<A, B = void> {
  * @example
  * ```typescript
  * // A contrived example of a source, sink, and operator all together.
- * const source: Site<number> = each([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+ * const source = Site.each<number>([1, 2, 3, 4]);
  * const xform = map((n: number) => `squared => ${n * n}`);
  * const sink = {
  *   count: 0,
@@ -61,16 +60,11 @@ interface Continuation<A, B = void> {
  * 2 squared => 4
  * 3 squared => 9
  * 4 squared => 16
- * 5 squared => 25
- * 6 squared => 36
- * 7 squared => 49
- * 8 squared => 64
- * 9 squared => 81
  * ```
  */
 class Site<A> {
-  constructor(
-    private _sub: (
+  protected constructor(
+    private readonly _action: (
       c: Continuation<A, unknown>
     ) => Activity | (() => void) | void
   ) {}
@@ -85,12 +79,12 @@ class Site<A> {
   ): Activity {
     const finish =
       "function" === typeof continuation
-        ? this._sub({
+        ? this._action({
           next(v: A): B {
             return continuation(v);
           }
         })
-        : this._sub(continuation);
+        : this._action(continuation);
     return !finish
       ? {
         finish() {
@@ -101,173 +95,175 @@ class Site<A> {
         ? { finish }
         : finish;
   }
-}
 
-/**
- * Lifts an arbitrary value of any type into a {@link Site} of that type which
- * will publish immediately exactly one time.
- * @category Site constructor
- * @public
- * @example
- * ```typescript
- * const simpleSite = pure(4);
- * simpleSite.subscribe((n: number) =>
- *   void console.log(`simpleSite value: ${n}`)
- * );
- * ```
- * @example
- * ```shell
- * # prints
- * simpleSite value: 4
- * ```
- */
-function pure<A>(value?: A): Site<A> {
-  return new Site((c) => {
-    c.next(value);
-  });
-}
+  /**
+   * Construct a site using a (delimited) continuation passing idiom.
+   * @param fn - A function whose argument is a delimited continuation.
+   * @returns A {@link Site}.
+   * @category Site constructor
+   * @experimental
+   * @example
+   * ```typescript
+   * Site.shift(times2 => {
+   *   const six = times2(3);
+   *   void times2(six);
+   * }).subscribe(
+   *   (three_then_six: number): number => {
+   *     console.log(`three_then_six = ${three_then_six}`);
+   *     return three_then_six * 2;
+   *   }
+   * );
+   * ```
+   * @example
+   * ```shell
+   * # prints
+   * three_then_six = 3
+   * three_then_six = 6
+   * ```
+   */
+  public static shift<A>(fn: (k: (value: A) => unknown) => void): Site<A> {
+    return new this((continuation) =>
+      fn((value: A) => continuation.next(value))
+    );
+  }
 
-/**
- * Create a {@link Site} which publishes each value of an `Iterable` object.
- * @category Site constructor
- * @public
- * @example
- * ```typescript
- * const arraySite = each([1, 2, 3]);
- * arraySite.subscribe(
- *   (n: number) => void console.log(`received: ${n}`)
- * );
- * ```
- * @example
- * ```shell
- * # prints
- * received: 1
- * received: 2
- * received: 3
- *```
- */
-function each<A>(it: Iterable<A>): Site<A> {
-  return new Site((c) => {
-    let cancelled = false;
-    void setTimeout(() => {
-      for (const value of it) {
-        if (cancelled) {
-          break;
+  /**
+   * Lifts an arbitrary value of any type into a {@link Site} of that type which
+   * will publish immediately exactly one time.
+   * @category Site constructor
+   * @public
+   * @example
+   * ```typescript
+   * const simpleSite = Site.pure(4);
+   * simpleSite.subscribe((n: number) =>
+   *   void console.log(`simpleSite value: ${n}`)
+   * );
+   * ```
+   * @example
+   * ```shell
+   * # prints
+   * simpleSite value: 4
+   * ```
+   */
+  public static pure<A>(value?: A): Site<A> {
+    return new this((c) => {
+      c.next(value);
+    });
+  }
+
+  /**
+   * Create a {@link Site} which publishes each value of an `Iterable` object.
+   * @category Site constructor
+   * @public
+   * @example
+   * ```typescript
+   * const arraySite = Site.each([1, 2, 3]);
+   * arraySite.subscribe(
+   *   (n: number) => void console.log(`received: ${n}`)
+   * );
+   * ```
+   * @example
+   * ```shell
+   * # prints
+   * received: 1
+   * received: 2
+   * received: 3
+   *```
+   */
+  public static each<A>(it: Iterable<A>): Site<A> {
+    return new this((c) => {
+      let cancelled = false;
+      void setTimeout(() => {
+        for (const value of it) {
+          if (cancelled) {
+            break;
+          }
+          else {
+            c.next(value);
+          }
         }
-        else {
+      }, 0);
+      return () => {
+        cancelled = true;
+      };
+    });
+  }
+
+  /**
+   * Converts a `Promise` into a {@link Site} which fires once.
+   * Any exceptions thrown while awaiting the promise will be re-thrown.
+   * If an exception is thrown the continuation will definitely not be called.
+   * @category Site constructor
+   * @public
+   * @remarks
+   * A `Promise` may be thought of as a linear Site; a Site may be thought of as
+   * a non-linear `Promise`.
+   * @example
+   * ```typescript
+   * const promiseSite = Site.keep(new Promise((resolve) => {
+   *   setTimeout(() => {
+   *     resolve("hello from 2 seconds ago");
+   *   }, 2000);
+   * }));
+   * const activity = promiseSite.subscribe(
+   *   (msg: string) => void console.log(msg)
+   * );
+   * ```
+   * @example
+   * ```shell
+   * # prints
+   * hello from 2 seconds ago
+   * ```
+   */
+  public static keep<A>(promise: PromiseLike<A>): Site<A> {
+    return new this((c) => {
+      let cancelled = false;
+      promise.then((value) => {
+        if (!cancelled) {
           c.next(value);
         }
-      }
-    }, 0);
-    return () => {
-      cancelled = true;
-    };
-  });
-}
-
-/**
- * Converts a `Promise` into a {@link Site} which fires once.
- * The {@link Activity} returned by a kept `Promise` will cancel it.
- * @category Site constructor
- * @public
- * @remarks
- * A `Promise` may be thought of as a linear Site; a Site may be thought of as
- * a non-linear `Promise`.
- * @example
- * ```typescript
- * const promiseSite = keep(new Promise((resolve) => {
- *   setTimeout(() => {
- *     resolve("hello from 2 seconds ago");
- *   }, 2000);
- * }));
- * const activity = promiseSite.subscribe(
- *   (msg: string) => void console.log(msg)
- * );
- * ```
- * @example
- * ```shell
- * # prints
- * hello from 2 seconds ago
- * ```
- */
-function keep<A>(promise: Promise<A>): Site<A> {
-  return new Site((c) => {
-    let cancelled = false;
-    promise.then((value) => {
-      if (!cancelled) {
-        c.next(value);
-      }
+      });
+      return () => {
+        cancelled = true;
+      };
     });
-    return () => {
-      cancelled = true;
-    };
-  });
-}
+  }
 
-/**
- * Merges, concurrently, multiple {@link Site | sites} into one.
- * @category Site constructor
- * @param sites - The sites whose results are to b
- * @returns A site which executes multiple sites in parallel and merges their
- * result values.
- * @example
- * ```typescript
- * void par([
- *   pure("A"),
- *   pure("B"),
- *   pure("C")
- * ]).subscribe((v: string) => void console.log(v));
- * ```
- * @example
- * ```shell
- * A
- * B
- * C
- * ```
- */
-
-function par<A>(sites: Site<A>[]): Site<A> {
-  return new Site((continuation) => {
-    const activities: Activity[] = [];
-    for (const site of sites) {
-      setTimeout(() => {
-        const activity = site.subscribe(continuation);
-        activities.push(activity);
-      }, 0);
-    }
-    return () => {
-      activities.forEach((activity) => void activity.finish());
-    };
-  });
-}
-
-/**
- * Construct a site using a (delimited) continuation passing idiom.
- * @param fn - A function whose argument is a delimited continuation.
- * @returns A {@link Site}.
- * @category Site constructor
- * @experimental
- * @example
- * ```typescript
- * shift(times2 => {
- *   const six = times2(3);
- *   void times2(six);
- * }).subscribe(
- *   (three_then_six: number): number => {
- *     console.log(`three_then_six = ${three_then_six}`);
- *     return three_then_six * 2;
- *   }
- * );
- * ```
- * @example
- * ```shell
- * # prints
- * three_then_six = 3
- * three_then_six = 6
- * ```
- */
-function shift<A>(fn: (k: (value: A) => unknown) => void): Site<A> {
-  return new Site((continuation) => fn((value: A) => continuation.next(value)));
+  /**
+   * Merges, concurrently, multiple {@link Site | sites} into one.
+   * @category Site constructor
+   * @param sites - The sites whose results are to b
+   * @returns A site which executes multiple sites in parallel and merges their
+   * result values.
+   * @example
+   * ```typescript
+   * void Site.par([
+   *   Site.pure("A"),
+   *   Site.pure("B"),
+   *   Site.pure("C")
+   * ]).subscribe((v: string) => void console.log(v));
+   * ```
+   * @example
+   * ```shell
+   * A
+   * B
+   * C
+   * ```
+   */
+  public static par<A>(sites: Iterable<Site<A>>): Site<A> {
+    return new this((continuation) => {
+      const activities: Activity[] = [];
+      for (const site of sites) {
+        setTimeout(() => {
+          const activity = site.subscribe(continuation);
+          activities.push(activity);
+        }, 0);
+      }
+      return () => {
+        activities.slice().forEach((activity) => void activity.finish());
+      };
+    });
+  }
 }
 
 /**
@@ -288,13 +284,9 @@ interface Operator<A, B> {
  */
 function map<A, B>(fn: (value: A, index?: number) => B): Operator<A, B> {
   return (source) =>
-    new Site<B>((cont) => {
+    Site.shift((cont) => {
       let count = 0;
-      return source.subscribe({
-        next(value: A) {
-          return cont.next(fn(value, count++) as B);
-        }
-      });
+      return source.subscribe((value: A) => cont(fn(value, count++) as B));
     });
 }
 
@@ -307,12 +299,8 @@ function map<A, B>(fn: (value: A, index?: number) => B): Operator<A, B> {
  */
 function join<A>(): Operator<Site<A>, A> {
   return (source) =>
-    new Site<A>((cont) =>
-      source.subscribe({
-        next(value: Site<A>) {
-          return value.subscribe(cont);
-        }
-      })
+    Site.shift((cont) =>
+      source.subscribe((value: Site<A>) => value.subscribe(cont))
     );
 }
 
@@ -348,12 +336,12 @@ function then<A, B>(fn: (a: A) => Site<B>): Operator<A, B> {
  */
 function filter<A>(fn: (value: A, index?: number) => boolean): Operator<A, A> {
   return (source) =>
-    new Site<A>((cont) => {
+    Site.shift((cont) => {
       let count = 0;
       return source.subscribe({
         next(value: A) {
           if (fn(value, count++)) {
-            return cont.next(value);
+            return cont(value);
           }
         }
       });
@@ -377,12 +365,10 @@ function filter<A>(fn: (value: A, index?: number) => boolean): Operator<A, A> {
  */
 function prune<A>(): Operator<A, A> {
   return (source) =>
-    new Site((continuation) => {
-      const activity = source.subscribe({
-        next(value: A) {
-          activity.finish();
-          return continuation.next(value);
-        }
+    Site.shift((continuation) => {
+      const activity = source.subscribe((value: A): unknown => {
+        activity.finish();
+        return continuation(value);
       });
       return activity;
     });
@@ -424,18 +410,14 @@ function prune<A>(): Operator<A, A> {
  * ```
  */
 class Wire<A> extends Site<A> implements Activity, Continuation<A> {
-  /**
-   * @see {@link Wire.done}
-   */
   protected _done = false;
 
   protected _subscribers: Continuation<A, unknown>[] = [];
 
   /**
-   * All wires do the same thing when you {@link Wire.subscribe | subscribe}
-   * a {@link Continuation} to them: the continuation is added to an internal
-   * array, and an {@link Activity} is returned which will unsubscribe the
-   * continuation when {@link Activity.finish | finish} is called.
+   * A Wire pushes subscribing continuations into
+   * {@link this._subscribers | an array of subscribers}.
+   * The returned {@link Activity} will unsubscribe the continuation.
    */
   constructor() {
     super((continuation: Continuation<A, unknown>) => {
@@ -488,10 +470,8 @@ class Wire<A> extends Site<A> implements Activity, Continuation<A> {
  * @example
  * ```typescript
  * const prop = new Signal<number>(0);
- * prop.subscribe({
- *   next() {
- *     console.log("property updated: ", prop.value);
- *   }
+ * prop.subscribe(() => {
+ *   console.log("property updated: ", prop.value);
  * });   // prints: "property updated: 0"
  * prop.next(1); // "property updated: 1"
  * prop.next(2); // "property updated: 2" ...
@@ -502,12 +482,7 @@ class Signal<A> extends Wire<A> implements Activity, Continuation<A> {
    * A Signal is a {@link Wire} which is constructed with an initial
    * {@link Signal.value | value}.
    */
-  constructor(
-    /**
-     * @see {@link Signal.value}
-     */
-    protected _value: A
-  ) {
+  constructor(protected _value: A) {
     super();
   }
 
@@ -539,21 +514,5 @@ class Signal<A> extends Wire<A> implements Activity, Continuation<A> {
   }
 }
 
-export {
-  Site,
-  Wire,
-  Signal,
-  pure,
-  each,
-  keep,
-  par,
-  shift,
-  map,
-  join,
-  filter,
-  then,
-  prune
-};
-
-// eslint-disable-next-line
+export { Site, Wire, Signal, map, join, filter, then, prune };
 export type { Activity, Continuation, Operator };
