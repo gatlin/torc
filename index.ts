@@ -30,17 +30,19 @@ interface Continuation<A, B = void> {
 /**
  * A computation which may asynchronously publish 0-or-more values to a
  * downstream {@link Continuation}.
- * @see {@link Continuation}
- * @typeParam A - the value type published by this Site.
- * @category Base
- * @public
- * @remarks
+ *
  * The {@link Activity} interface simply represents computations which may be
  * discarded and may be considered "`void` with extra steps."
  * Thus a Site is nothing more than a syntactic wrapper around a function of
  * type `(A => void) => void`, otherwise known as the type of
  * _continuations for `A`_.
  * In other words a Site is an implementation of continuation passing style.
+ *
+ * @see {@link Site} a sub-class for declaring reactive pipelines.
+ * @see {@link Continuation}
+ * @typeParam A - the value type published by this Site.
+ * @category Base
+ * @public
  * @example
  * ```typescript
  * // A contrived example of a source, sink, and operator all together.
@@ -52,7 +54,7 @@ interface Continuation<A, B = void> {
  *     console.log(++this.count, response);
  *   }
  * };
- * void xform(numbers).subscribe(sink);
+ * void xform(source).subscribe(sink);
  * ```
  * @example
  * ```shell
@@ -62,7 +64,7 @@ interface Continuation<A, B = void> {
  * 4 squared => 16
  * ```
  */
-class Site<A> {
+abstract class Actor<A> {
   protected constructor(
     private readonly _action: (
       c: Continuation<A, unknown>
@@ -95,7 +97,20 @@ class Site<A> {
         ? { finish }
         : finish;
   }
+}
 
+/**
+ * A Site is where an {@link Activity} occurs.
+ *
+ * An {@link Actor | `Actor<A>`} for some type `A` defines a *double negation*
+ * for values of type `A`.
+ * As such its {@link Actor.constructor | constructor} is protected to prevent
+ * misuse.
+ * Instead, Site provides ways of creating useful Actors, inspired by both
+ * {@link https://rxjs.org | RxJS} and
+ * {@link https://orc.csres.utexas.edu/ | Orc}.
+ */
+class Site<A> extends Actor<A> {
   /**
    * Construct a site using a (delimited) continuation passing idiom.
    * @param fn - A function whose argument is a delimited continuation.
@@ -375,7 +390,7 @@ function prune<A>(): Operator<A, A> {
 }
 
 /**
- * A {@link Site} which relays a value to 0 or more subscribing
+ * An {@link Actor} which relays a value to 0 or more subscribing
  * {@link Continuation | continuations}.
  *
  * You may stop the wire from executing by calling {@link Wire.finish}.
@@ -409,7 +424,7 @@ function prune<A>(): Operator<A, A> {
  * // "[listener 2] 2"
  * ```
  */
-class Wire<A> extends Site<A> implements Activity, Continuation<A> {
+class Wire<A> extends Actor<A> implements Activity, Continuation<A> {
   protected _done = false;
 
   protected _subscribers: Continuation<A, unknown>[] = [];
@@ -515,4 +530,4 @@ class Signal<A> extends Wire<A> implements Activity, Continuation<A> {
 }
 
 export { Site, Wire, Signal, map, join, filter, then, prune };
-export type { Activity, Continuation, Operator };
+export type { Actor, Activity, Continuation, Operator };

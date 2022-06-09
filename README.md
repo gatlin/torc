@@ -24,24 +24,24 @@ npm run coverage
 ## Synopsis
 
 ```typescript
-import { Site, prune, then } from "./index";
+import { Site, prune, then } from "../index";
 import { createInterface } from "readline";
 import { pipe } from "ts-functional-pipe";
 
+// Create a new Site publishing lines from stdin.
+const stdin = Site.shift<string>((publishLine) => {
+  const iface = createInterface({ input: process.stdin });
+  void iface.on("line", publishLine);
+  return () => void iface.close();
+});
+
 // Publishes either `undefined` or a specified value after a given delay.
-function timerMS(delayMS: number, value?: unknown): Site<unknown> {
-  return Site.shift((k) => {
-    const timer = setTimeout(() => void k(value), delayMS);
+function delayMS(delayMS: number, value?: unknown): Site<unknown> {
+  return Site.shift<unknown>((callback) => {
+    const timer = setTimeout(() => void callback(value), delayMS);
     return () => void clearTimeout(timer);
   });
 }
-
-// Create a new Site publishing lines from stdin.
-const stdin = Site.shift<string>((handleLine) => {
-  const iface = createInterface({ input: process.stdin });
-  void iface.on("line", handleLine);
-  return () => void iface.close();
-});
 
 // Displays a message and publishes the first reply to stdin.
 function prompt(message: string): Site<string> {
@@ -49,32 +49,29 @@ function prompt(message: string): Site<string> {
   return prune()(stdin);
 }
 
-// Prompt which short-circuits with `undefined` after 5 seconds.
-const impatientPrompt = (message: string): Site<string> =>
-  prune()(Site.par([prompt(message), timerMS(5000)]));
+// Prompt which short-circuits with a default after 5 seconds.
+function impatientPrompt(message: string): Site<string> {
+  return prune()(Site.par([prompt(message), delayMS(5000)]));
+}
 
-// A reactive pipeline with side-effects.
 const source = pipe(
-  then(() => impatientPrompt("Hello! What is your name?")),
-  then((name: string) =>
-    prompt(
-      !name
-        ? "Anonymity is fine, too. How old are you?"
-        : `Charmed, ${name}! How old are you?`
-    )
-  ),
-  then((ageS: string) => {
-    console.log(`Wow! That is ${parseInt(ageS, 10) * 7} in dog years!`);
-    return Site.each(Array(parseInt(ageS, 10)));
+  then(() => impatientPrompt("Name a color please: ")),
+  then((color?: string) => {
+    if (color) {
+      return Site.pure(color);
+    }
+    console.log("5 seconds have passed. Selecting tasteful default.");
+    return Site.pure("chartreuse");
   }),
-  then(() => Site.pure("Happy belated birthday!"))
+  then((color: string) =>
+    Site.par([Site.pure("red"), Site.pure(`${color}`), Site.pure("blue")])
+  )
 )(Site.pure());
 
-// A sink for the values coming out of the pipe.
 const sink = {
   counter: 0,
   next(result: unknown) {
-    console.log(`[Year: ${++this.counter}] ${result}`);
+    console.log(`[${++this.counter}]`, result);
     return;
   }
 };
@@ -84,28 +81,21 @@ void source.subscribe(sink);
 
 ```shell
 $> ts-node synopsis.ts
-> Hello! What is your name?
-Gatlin
-> Charmed, Gatlin! How old are you?
-33
-Wow! That is 231 in dog years!
-[Year: 1] Happy belated birthday!
-[Year: 2] Happy belated birthday!
-# ... skip a few lines ...
-[Year: 32] Happy belated birthday!
-[Year: 33] Happy belated birthday!
+< Name a color please:
+# you type "green"
+[1] red
+[2] green
+[3] blue
 ```
 
 ```shell
 $> ts-node synopsis.ts
-> Hello! What is your name?
-# ... 5 seconds pass without a response ...
-> Anonymity is fine, too. How old are you?
-3
-Wow! That is 21 in dog years!
-[Year: 1] Happy belated birthday!
-[Year: 2] Happy belated birthday!
-[Year: 3] Happy belated birthday!
+< Name a color please:
+# you take more than five seconds to reply ...
+5 seconds have passed. Selecting tasteful default.
+[1] red
+[2] chartreuse
+[3] blue
 ```
 ## Overview
 
