@@ -29,42 +29,22 @@ interface Continuation<A, B = void> {
 
 /**
  * A computation which may asynchronously publish 0-or-more values to a
- * downstream {@link Continuation}.
- *
- * The {@link Activity} interface simply represents computations which may be
- * discarded and may be considered "`void` with extra steps."
- * Thus a Site is nothing more than a syntactic wrapper around a function of
- * type `(A => void) => void`, otherwise known as the type of
- * _continuations for `A`_.
- * In other words a Site is an implementation of continuation passing style.
- *
+ * subscribing {@link Continuation}.
+
+ * An {@link Channel | `Channel<A>`} for some type `A` defines a
+ * *double negation* of values of type `A`.
+ * As such its {@link Channel.constructor | constructor} is protected to prevent
+ * misuse.
+ * Instead, it is used to define other classes.
+ * 
  * @see {@link Site} a sub-class for declaring reactive pipelines.
- * @see {@link Continuation}
+ * @see {@link Wire} a sub-class for event broadcasting.
+ * @see {@link Signal} for a dynamic store (as seen in Svelte).
  * @typeParam A - the value type published by this Site.
  * @category Base
- * @public
- * @example
- * ```typescript
- * // A contrived example of a source, sink, and operator all together.
- * const source = Site.each<number>([1, 2, 3, 4]);
- * const xform = map((n: number) => `squared => ${n * n}`);
- * const sink = {
- *   count: 0,
- *   next(response: string) {
- *     console.log(++this.count, response);
- *   }
- * };
- * void xform(source).subscribe(sink);
- * ```
- * @example
- * ```shell
- * 1 squared => 1
- * 2 squared => 4
- * 3 squared => 9
- * 4 squared => 16
- * ```
+ * @internal
  */
-abstract class Actor<A> {
+abstract class Channel<A> {
   protected constructor(
     private readonly _action: (
       c: Continuation<A, unknown>
@@ -102,15 +82,36 @@ abstract class Actor<A> {
 /**
  * A Site is where an {@link Activity} occurs.
  *
- * An {@link Actor | `Actor<A>`} for some type `A` defines a *double negation*
- * for values of type `A`.
- * As such its {@link Actor.constructor | constructor} is protected to prevent
- * misuse.
- * Instead, Site provides ways of creating useful Actors, inspired by both
- * {@link https://rxjs.org | RxJS} and
+ * Site provides a variety of useful constructors for building event pipelines,
+ * borrowing ideas from {@link https://rxjs.org | RxJS} and
  * {@link https://orc.csres.utexas.edu/ | Orc}.
+ *
+ * As well, the activity published by a site may be transformed with operators.
+ * @see {@link Operator}
+ * @category Base
+ * @public
+ * @example
+ * ```typescript
+ * // A contrived example of a source, sink, and operator all together.
+ * const source = Site.each<number>([1, 2, 3, 4]);
+ * const transform = map((n: number) => `squared => ${n * n}`);
+ * const sink = {
+ *   count: 0,
+ *   next(response: string) {
+ *     console.log(++this.count, response);
+ *   }
+ * };
+ * void transform(source).subscribe(sink);
+ * ```
+ * @example
+ * ```shell
+ * 1 squared => 1
+ * 2 squared => 4
+ * 3 squared => 9
+ * 4 squared => 16
+ * ```
  */
-class Site<A> extends Actor<A> {
+class Site<A> extends Channel<A> {
   /**
    * Construct a site using a (delimited) continuation passing idiom.
    * @param fn - A function whose argument is a delimited continuation.
@@ -283,7 +284,7 @@ class Site<A> extends Actor<A> {
 
 /**
  * A function mapping a {@link Site} from one type to another.
- * @category Base
+ * @category Site
  * @public
  */
 interface Operator<A, B> {
@@ -326,8 +327,8 @@ function join<A>(): Operator<Site<A>, A> {
  * @public
  * @example
  * ```typescript
- * const xform = then(each);
- * void xform(pure([1, 2, 3])).subscribe((n) => void console.log(`n = ${n}`));
+ * const fn = then(each);
+ * void fn(Site.pure([1, 2, 3])).subscribe((n) => void console.log(`n = ${n}`));
  * ```
  * @example
  * ```shell
@@ -370,7 +371,7 @@ function filter<A>(fn: (value: A, index?: number) => boolean): Operator<A, A> {
  * @category Operator
  * @example
  * ```typescript
- * const three: Site<number> = prune()(each([3, 2, 1]));
+ * const three = prune()(Site.each([3, 2, 1]));
  * void three.subscribe((n: number) => void console.log(`n = ${n}`));
  * ```
  * @example
@@ -390,7 +391,7 @@ function prune<A>(): Operator<A, A> {
 }
 
 /**
- * An {@link Actor} which relays a value to 0 or more subscribing
+ * An {@link Channel} which relays a value to 0 or more subscribing
  * {@link Continuation | continuations}.
  *
  * You may stop the wire from executing by calling {@link Wire.finish}.
@@ -398,7 +399,7 @@ function prune<A>(): Operator<A, A> {
  * can be used to "unsubscribe" that continuation from the wire.
  * @see {@link Activity}
  * @see {@link Continuation}
- * @category Reactive
+ * @category Base
  * @public
  * @example
  * ```
@@ -424,7 +425,7 @@ function prune<A>(): Operator<A, A> {
  * // "[listener 2] 2"
  * ```
  */
-class Wire<A> extends Actor<A> implements Activity, Continuation<A> {
+class Wire<A> extends Channel<A> implements Activity, Continuation<A> {
   protected _done = false;
 
   protected _subscribers: Continuation<A, unknown>[] = [];
@@ -477,10 +478,10 @@ class Wire<A> extends Actor<A> implements Activity, Continuation<A> {
 
 /**
  * A dynamic, time-varying value.
- * @category Reactive
  * @see {@link Activity}
  * @see {@link Continuation}
  * @see {@link Wire}
+ * @category Base
  * @public
  * @example
  * ```typescript
@@ -530,4 +531,4 @@ class Signal<A> extends Wire<A> implements Activity, Continuation<A> {
 }
 
 export { Site, Wire, Signal, map, join, filter, then, prune };
-export type { Actor, Activity, Continuation, Operator };
+export type { Activity, Channel, Continuation, Operator };
