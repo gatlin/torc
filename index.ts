@@ -31,7 +31,7 @@ interface Continuation<A, B = void> {
  * A computation which may asynchronously publish 0-or-more values to a
  * subscribing {@link Continuation}.
 
- * An {@link Channel | `Channel<A>`} for some type `A` defines a
+ * A {@link Channel | `Channel<A>`} for some type `A` defines a
  * *double negation* of values of type `A`.
  * As such its {@link Channel.constructor | constructor} is protected to prevent
  * misuse.
