@@ -7,7 +7,8 @@ import {
   filter,
   join,
   then,
-  prune
+  prune,
+  reset
 } from "./index";
 import type { Activity, Operator } from "./index";
 
@@ -389,4 +390,12 @@ test("prune commutes a Site to 1 value", (t) => {
     }
   };
   prune()(s).subscribe(checker);
+});
+
+test("reset prunes a site and converts it into a promise", (t) => {
+  const s: Site<number> = Site.each([3, 2, 1]);
+  reset(s).then((value) => {
+    t.equal(value, 3);
+    t.end();
+  });
 });

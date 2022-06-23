@@ -300,10 +300,14 @@ interface Operator<A, B> {
  */
 function map<A, B>(fn: (value: A, index?: number) => B): Operator<A, B> {
   return (source) =>
-    Site.shift((cont) => {
-      let count = 0;
-      return source.subscribe((value: A) => cont(fn(value, count++) as B));
-    });
+    Site.shift((cont) =>
+      source.subscribe({
+        count: 0,
+        next(value: A) {
+          return cont(fn(value, this.count++));
+        }
+      } as Continuation<A, B>)
+    );
 }
 
 /**
@@ -327,7 +331,7 @@ function join<A>(): Operator<Site<A>, A> {
  * @public
  * @example
  * ```typescript
- * const fn = then(each);
+ * const fn = then((numList: number[]) => Site.each(numList));
  * void fn(Site.pure([1, 2, 3])).subscribe((n) => void console.log(`n = ${n}`));
  * ```
  * @example
@@ -352,16 +356,16 @@ function then<A, B>(fn: (a: A) => Site<B>): Operator<A, B> {
  */
 function filter<A>(fn: (value: A, index?: number) => boolean): Operator<A, A> {
   return (source) =>
-    Site.shift((cont) => {
-      let count = 0;
-      return source.subscribe({
+    Site.shift((cont) =>
+      source.subscribe({
+        count: 0,
         next(value: A) {
-          if (fn(value, count++)) {
+          if (fn(value, this.count++)) {
             return cont(value);
           }
         }
-      });
-    });
+      } as Continuation<A, unknown>)
+    );
 }
 
 /**
@@ -391,7 +395,19 @@ function prune<A>(): Operator<A, A> {
 }
 
 /**
- * An {@link Channel} which relays a value to 0 or more subscribing
+ * Awaits the first published value from a {@link Site} and transforms it into
+ * a `Promise`.
+ * The site's {@link Activity} is finished, allowing for automatic resource
+ * disposal.
+ * @category Operator
+ */
+function reset<A>(site: Site<A>): Promise<A> {
+  const pruned: Site<A> = prune()(site);
+  return new Promise<A>((resolve) => void pruned.subscribe(resolve));
+}
+
+/**
+ * A {@link Channel} which relays a value to 0 or more subscribing
  * {@link Continuation | continuations}.
  *
  * You may stop the wire from executing by calling {@link Wire.finish}.
@@ -530,5 +546,5 @@ class Signal<A> extends Wire<A> implements Activity, Continuation<A> {
   }
 }
 
-export { Site, Wire, Signal, map, join, filter, then, prune };
+export { Site, Wire, Signal, map, join, filter, then, prune, reset };
 export type { Activity, Channel, Continuation, Operator };
