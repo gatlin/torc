@@ -288,7 +288,7 @@ class Site<A> extends Channel<A> {
  * @public
  */
 interface Operator<A, B> {
-  (s: Site<A>): Site<B>;
+  (s: Channel<A>): Site<B>;
 }
 
 /**
