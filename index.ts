@@ -62,20 +62,20 @@ abstract class Channel<A> {
     const finish =
       "function" === typeof continuation
         ? this._action({
-          next(v: A): B {
-            return continuation(v);
-          }
-        })
+            next(v: A): B {
+              return continuation(v);
+            }
+          })
         : this._action(continuation);
     return !finish
       ? {
-        finish() {
-          return;
+          finish() {
+            return;
+          }
         }
-      }
       : "function" === typeof finish
-        ? { finish }
-        : finish;
+      ? { finish }
+      : finish;
   }
 }
 
@@ -193,8 +193,7 @@ class Site<A> extends Channel<A> {
         for (const value of it) {
           if (cancelled) {
             break;
-          }
-          else {
+          } else {
             c.next(value);
           }
         }
