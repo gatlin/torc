@@ -1,8 +1,13 @@
 import { test } from "tap";
 import {
-  Site,
+  Observable,
+  pure,
+  shift,
+  par,
+  each,
+  keep,
   Wire,
-  Signal,
+  Behavior,
   map,
   filter,
   join,
@@ -10,11 +15,14 @@ import {
   prune,
   reset
 } from "./index";
-import type { Activity, Operator } from "./index";
+import type { Activity, Transformer } from "./index";
 
 // Utility site for at least 1 test.
-function timeoutMS(ms: number, value: unknown = undefined): Site<unknown> {
-  return Site.shift((k) => {
+function timeoutMS(
+  ms: number,
+  value: unknown = undefined
+): Observable<unknown> {
+  return shift((k) => {
     const timer = setTimeout(() => {
       k(value);
     }, ms);
@@ -26,7 +34,7 @@ function timeoutMS(ms: number, value: unknown = undefined): Site<unknown> {
 
 test("a site generates an activity which finishes as expected", (t) => {
   let total = 0;
-  const s1 = Site.shift((cont) => {
+  const s1 = shift((cont) => {
     cont(3);
     cont(2);
     cont(1);
@@ -48,7 +56,7 @@ test("a site generates an activity which finishes as expected", (t) => {
 
 test("a site also subscribes unary functions", (t) => {
   let total = 0;
-  const s1: Site<number> = Site.shift((cont) => {
+  const s1: Observable<number> = shift((cont) => {
     cont(3);
     cont(2);
     cont(1);
@@ -68,7 +76,7 @@ test("a site also subscribes unary functions", (t) => {
 });
 
 test("pure creates a site from a non-site value", (t) => {
-  const s: Site<number> = Site.pure(5);
+  const s: Observable<number> = pure(5);
   s.subscribe({
     next(five: number) {
       t.equal(five, 5);
@@ -106,7 +114,7 @@ test("a wire stops when it has been finished", (t) => {
       canary = false;
     }
   });
-  Site.shift((cont) => {
+  shift((cont) => {
     cont(1);
     return () => {
       t.ok(canary);
@@ -139,7 +147,7 @@ test("a wire removes a subscriber when its activity is finished", (t) => {
 });
 
 test("a signal exposes its default value and updates when appropriate", (t) => {
-  const sig = new Signal<number>(4);
+  const sig = new Behavior<number>(4);
   t.equal(sig.value, 4);
   let counter = 0;
   sig.subscribe({
@@ -158,7 +166,7 @@ test("a signal exposes its default value and updates when appropriate", (t) => {
 });
 
 test("a signal stops updating its value when finished", (t) => {
-  const sig = new Signal<number>(0);
+  const sig = new Behavior<number>(0);
   t.equal(sig.value, 0);
   t.same(sig.done, false);
   sig.finish();
@@ -170,7 +178,7 @@ test("a signal stops updating its value when finished", (t) => {
 });
 
 test("a signal subscribes unary functions correctly", (t) => {
-  const sig = new Signal<number>(4);
+  const sig = new Behavior<number>(4);
   t.equal(sig.value, 4);
   let counter = 0;
   sig.subscribe((value: number) => {
@@ -188,7 +196,7 @@ test("a signal subscribes unary functions correctly", (t) => {
 
 test("map operator", (t) => {
   let toggle = true;
-  const nums: Site<number> = Site.shift((cont) => {
+  const nums: Observable<number> = shift((cont) => {
     for (let i = 0; i < 10; ++i) {
       cont(i);
     }
@@ -210,7 +218,7 @@ test("map operator", (t) => {
 });
 
 test("filter operator", (t) => {
-  const nums: Site<number> = Site.shift((cont) => {
+  const nums: Observable<number> = shift((cont) => {
     for (let i = 0; i < 10; ++i) {
       cont(i);
     }
@@ -231,9 +239,9 @@ test("filter operator", (t) => {
 });
 
 test("join operator", (t) => {
-  const s1: Site<Site<number>> = Site.shift((outer) => {
+  const s1: Observable<Observable<number>> = shift((outer) => {
     outer(
-      Site.shift((inner) => {
+      shift((inner) => {
         inner(4);
       })
     );
@@ -252,7 +260,7 @@ test("join operator", (t) => {
 
 test("keep", (t) => {
   const fn = async (n: number): Promise<boolean> => 0 === n % 2;
-  const s: Site<boolean> = Site.keep(fn(4));
+  const s: Observable<boolean> = keep(fn(4));
   s.subscribe({
     next(isEven: boolean) {
       t.ok(isEven);
@@ -263,7 +271,7 @@ test("keep", (t) => {
 
 test("kept promise is cancellable", async (t) => {
   let flag = false;
-  const promiseSite = Site.keep(
+  const promiseSite = keep(
     new Promise((resolve) => {
       setTimeout(() => {
         resolve("test");
@@ -286,7 +294,7 @@ test("kept promise is cancellable", async (t) => {
 });
 
 test("each", (t) => {
-  const s: Site<number> = Site.each([1, 2, 3]);
+  const s: Observable<number> = each([1, 2, 3]);
   const checker = {
     count: 0,
     next(n: number) {
@@ -306,7 +314,7 @@ test("each can be cancelled", (t) => {
 test("then", (t) => {
   const sequence = [0, 2, 4, 6, 8];
   let index = 0;
-  const s: Site<number> = Site.shift((c) => {
+  const s: Observable<number> = shift((c) => {
     for (let i = 0; i < 10; i++) {
       c(i);
     }
@@ -314,16 +322,16 @@ test("then", (t) => {
       t.end();
     };
   });
-  const op1: Operator<number, number> = then(
-    (n: number): Site<number> => {
-      return Site.shift((c) => {
+  const op1: Transformer<number, number> = then(
+    (n: number): Observable<number> => {
+      return shift((c) => {
         if (0 === n % 2) {
           c(n);
         }
       });
     }
   );
-  const op2: Operator<number, string> = then((n) => Site.pure(`${n} is even`));
+  const op2: Transformer<number, string> = then((n) => pure(`${n} is even`));
   op2(op1(s))
     .subscribe({
       next(msg: string) {
@@ -335,7 +343,7 @@ test("then", (t) => {
 
 test("shift", (t) => {
   let toggled = false;
-  Site.shift((times2) => {
+  shift((times2) => {
     const six = times2(3);
     return times2(six);
   }).subscribe({
@@ -343,8 +351,7 @@ test("shift", (t) => {
       if (!toggled) {
         t.equal(three_then_six, 3);
         toggled = !toggled;
-      }
-      else {
+      } else {
         t.equal(three_then_six, 6);
         t.end();
       }
@@ -354,7 +361,7 @@ test("shift", (t) => {
 });
 
 test("par merges multiple sites into one", (t) => {
-  const s: Site<number> = Site.par([Site.pure(4), Site.pure(3), timeoutMS(3000, 1)]);
+  const s: Observable<number> = par([pure(4), pure(3), timeoutMS(3000, 1)]);
   const checker = {
     count: 0,
     total: 0,
@@ -363,8 +370,7 @@ test("par merges multiple sites into one", (t) => {
       this.count++;
       if (this.count === 1) {
         t.equal(this.total, 4);
-      }
-      else if (this.count === 2) {
+      } else if (this.count === 2) {
         t.equal(this.total, 7);
         t.end();
       }
@@ -376,8 +382,8 @@ test("par merges multiple sites into one", (t) => {
   }, 1500);
 });
 
-test("prune commutes a Site to 1 value", (t) => {
-  const s: Site<number> = Site.each([1, 2, 3]);
+test("prune commutes an observable to 1 value", (t) => {
+  const s: Observable<number> = each([1, 2, 3]);
   const checker = {
     count: 0,
     next(value: number) {
@@ -393,7 +399,7 @@ test("prune commutes a Site to 1 value", (t) => {
 });
 
 test("reset prunes a site and converts it into a promise", (t) => {
-  const s: Site<number> = Site.each([3, 2, 1]);
+  const s: Observable<number> = each([3, 2, 1]);
   reset(s).then((value) => {
     t.equal(value, 3);
     t.end();

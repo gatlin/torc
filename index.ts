@@ -4,8 +4,8 @@
  */
 
 /**
- * Represents a computation or ongoing behavior which may be halted at any
- * time with the {@link Activity.finish} method.
+ * Represents an ongoing computation, behavior, or process which may be halted
+ * at any time with the {@link Activity.finish} method.
  * @category Base
  * @public
  */
@@ -23,50 +23,47 @@ interface Activity {
  * @category Base
  * @public
  */
-interface Continuation<A, B = void> {
+interface Observer<A, B = void> {
   next(value?: A): B;
 }
 
 /**
  * A computation which may asynchronously publish 0-or-more values to a
- * subscribing {@link Continuation}.
+ * subscribing {@link Observer}.
 
- * A {@link Channel | `Channel<A>`} for some type `A` defines a
+ * An {@link Observable | `Observable<A>`} for some type `A` defines a
  * *double negation* of values of type `A`.
- * As such its {@link Channel.constructor | constructor} is protected to prevent
+ * As such its {@link Observable.constructor | constructor} is protected to prevent
  * misuse.
  * Instead, it is used to define other classes.
- * 
- * @see {@link Site} a sub-class for declaring reactive pipelines.
+ *
  * @see {@link Wire} a sub-class for event broadcasting.
- * @see {@link Signal} for a dynamic store (as seen in Svelte).
- * @typeParam A - the value type published by this Site.
+ * @see {@link Behavior} for a dynamic store (as seen in Svelte).
+ * @typeParam A - the value type published by this Observable.
  * @category Base
  * @internal
  */
-abstract class Channel<A> {
+class Observable<A> {
   protected constructor(
-    private readonly _action: (
-      c: Continuation<A, unknown>
-    ) => Activity | (() => void) | void
+    private _action: (c: Observer<A, unknown>) => Activity | (() => void) | void
   ) {}
 
   /**
-   * @typeParam B - Type returned by the incoming continuation.
-   * @param continuation - This function will be called each time the Site
+   * @typeParam B - Type returned by the incoming observer.
+   * @param observer - This function will be called each time the observable
    * publishes a value.
    */
   public subscribe<B = void>(
-    continuation: Continuation<A, B> | ((a: A) => B)
+    observer: Observer<A, B> | ((a: A) => B)
   ): Activity {
     const finish =
-      "function" === typeof continuation
+      "function" === typeof observer
         ? this._action({
             next(v: A): B {
-              return continuation(v);
+              return observer(v);
             }
           })
-        : this._action(continuation);
+        : this._action(observer);
     return !finish
       ? {
           finish() {
@@ -80,258 +77,241 @@ abstract class Channel<A> {
 }
 
 /**
- * A Site is where an {@link Activity} occurs.
- *
- * Site provides a variety of useful constructors for building event pipelines,
- * borrowing ideas from {@link https://rxjs.org | RxJS} and
- * {@link https://orc.csres.utexas.edu/ | Orc}.
- *
- * As well, the activity published by a site may be transformed with operators.
- * @see {@link Operator}
- * @category Base
+ * Lifts an arbitrary value of any type into an {@link Observable} of that type
+ * which will publish immediately exactly one time.
+ * @category Site
  * @public
  * @example
  * ```typescript
- * // A contrived example of a source, sink, and operator all together.
- * const source = Site.each<number>([1, 2, 3, 4]);
- * const transform = map((n: number) => `squared => ${n * n}`);
- * const sink = {
- *   count: 0,
- *   next(response: string) {
- *     console.log(++this.count, response);
- *   }
- * };
- * void transform(source).subscribe(sink);
+ * const simple = pure(4);
+ * simple.subscribe((n: number) =>
+ *   void console.log(`simple value: ${n}`)
+ * );
  * ```
  * @example
  * ```shell
- * 1 squared => 1
- * 2 squared => 4
- * 3 squared => 9
- * 4 squared => 16
+ * # prints
+ * simple value: 4
  * ```
  */
-class Site<A> extends Channel<A> {
-  /**
-   * Construct a site using a (delimited) continuation passing idiom.
-   * @param fn - A function whose argument is a delimited continuation.
-   * @returns A {@link Site}.
-   * @category Site constructor
-   * @experimental
-   * @example
-   * ```typescript
-   * Site.shift(times2 => {
-   *   const six = times2(3);
-   *   void times2(six);
-   * }).subscribe(
-   *   (three_then_six: number): number => {
-   *     console.log(`three_then_six = ${three_then_six}`);
-   *     return three_then_six * 2;
-   *   }
-   * );
-   * ```
-   * @example
-   * ```shell
-   * # prints
-   * three_then_six = 3
-   * three_then_six = 6
-   * ```
-   */
-  public static shift<A>(fn: (k: (value: A) => unknown) => void): Site<A> {
-    return new this((continuation) =>
-      fn((value: A) => continuation.next(value))
-    );
-  }
-
-  /**
-   * Lifts an arbitrary value of any type into a {@link Site} of that type which
-   * will publish immediately exactly one time.
-   * @category Site constructor
-   * @public
-   * @example
-   * ```typescript
-   * const simpleSite = Site.pure(4);
-   * simpleSite.subscribe((n: number) =>
-   *   void console.log(`simpleSite value: ${n}`)
-   * );
-   * ```
-   * @example
-   * ```shell
-   * # prints
-   * simpleSite value: 4
-   * ```
-   */
-  public static pure<A>(value?: A): Site<A> {
-    return new this((c) => {
-      c.next(value);
-    });
-  }
-
-  /**
-   * Create a {@link Site} which publishes each value of an `Iterable` object.
-   * @category Site constructor
-   * @public
-   * @example
-   * ```typescript
-   * const arraySite = Site.each([1, 2, 3]);
-   * arraySite.subscribe(
-   *   (n: number) => void console.log(`received: ${n}`)
-   * );
-   * ```
-   * @example
-   * ```shell
-   * # prints
-   * received: 1
-   * received: 2
-   * received: 3
-   *```
-   */
-  public static each<A>(it: Iterable<A>): Site<A> {
-    return new this((c) => {
-      let cancelled = false;
-      void setTimeout(() => {
-        for (const value of it) {
-          if (cancelled) {
-            break;
-          } else {
-            c.next(value);
-          }
-        }
-      }, 0);
-      return () => {
-        cancelled = true;
-      };
-    });
-  }
-
-  /**
-   * Converts a `Promise` into a {@link Site} which fires once.
-   * Any exceptions thrown while awaiting the promise will be re-thrown.
-   * If an exception is thrown the continuation will definitely not be called.
-   * @category Site constructor
-   * @public
-   * @remarks
-   * A `Promise` may be thought of as a linear Site; a Site may be thought of as
-   * a non-linear `Promise`.
-   * @example
-   * ```typescript
-   * const promiseSite = Site.keep(new Promise((resolve) => {
-   *   setTimeout(() => {
-   *     resolve("hello from 2 seconds ago");
-   *   }, 2000);
-   * }));
-   * const activity = promiseSite.subscribe(
-   *   (msg: string) => void console.log(msg)
-   * );
-   * ```
-   * @example
-   * ```shell
-   * # prints
-   * hello from 2 seconds ago
-   * ```
-   */
-  public static keep<A>(promise: PromiseLike<A>): Site<A> {
-    return new this((c) => {
-      let cancelled = false;
-      promise.then((value) => {
-        if (!cancelled) {
-          c.next(value);
-        }
-      });
-      return () => {
-        cancelled = true;
-      };
-    });
-  }
-
-  /**
-   * Merges, concurrently, multiple {@link Site | sites} into one.
-   * @category Site constructor
-   * @param sites - The sites whose results are to b
-   * @returns A site which executes multiple sites in parallel and merges their
-   * result values.
-   * @example
-   * ```typescript
-   * void Site.par([
-   *   Site.pure("A"),
-   *   Site.pure("B"),
-   *   Site.pure("C")
-   * ]).subscribe((v: string) => void console.log(v));
-   * ```
-   * @example
-   * ```shell
-   * A
-   * B
-   * C
-   * ```
-   */
-  public static par<A>(sites: Iterable<Site<A>>): Site<A> {
-    return new this((continuation) => {
-      const activities: Activity[] = [];
-      for (const site of sites) {
-        setTimeout(() => {
-          const activity = site.subscribe(continuation);
-          activities.push(activity);
-        }, 0);
-      }
-      return () => {
-        activities.slice().forEach((activity) => void activity.finish());
-      };
-    });
-  }
+function pure<A>(value?: A): Observable<A> {
+  return new (class extends Observable<A> {
+    constructor() {
+      super((observer: Observer<typeof value>) => observer.next(value));
+    }
+  })();
 }
 
 /**
- * A function mapping a {@link Site} from one type to another.
+ * Construct an Observable using a (delimited) continuation-passing idiom.
+ * @param fn - A function whose argument is a delimited continuation.
+ * @returns An {@link Observable}.
+ * @category Site
+ * @experimental
+ * @example
+ * ```typescript
+ * shift(times2 => {
+ *   const six = times2(3);
+ *   void times2(six);
+ * }).subscribe(
+ *   (three_then_six: number): number => {
+ *     console.log(`three_then_six = ${three_then_six}`);
+ *     return three_then_six * 2;
+ *   }
+ * );
+ * ```
+ * @example
+ * ```shell
+ * # prints
+ * three_then_six = 3
+ * three_then_six = 6
+ * ```
+ */
+function shift<A>(fn: (k: (value: A) => unknown) => void): Observable<A> {
+  return new (class extends Observable<A> {
+    constructor() {
+      super((observer) => fn((value: A) => observer.next(value)));
+    }
+  })();
+}
+
+/**
+ * Create an {@link Observable} which publishes each value of an `Iterable`
+ * object.
  * @category Site
  * @public
+ * @example
+ * ```typescript
+ * const array = each([1, 2, 3]);
+ * array.subscribe(
+ *   (n: number) => void console.log(`received: ${n}`)
+ * );
+ * ```
+ * @example
+ * ```shell
+ * # prints
+ * received: 1
+ * received: 2
+ * received: 3
+ *```
  */
-interface Operator<A, B> {
-  (s: Channel<A>): Site<B>;
+function each<A>(it: Iterable<A>): Observable<A> {
+  return new (class extends Observable<A> {
+    constructor() {
+      super((observer) => {
+        let cancelled = false;
+        void setTimeout(() => {
+          for (const value of it) {
+            if (cancelled) {
+              break;
+            } else {
+              observer.next(value);
+            }
+          }
+        }, 0);
+        return () => {
+          cancelled = true;
+        };
+      });
+    }
+  })();
 }
 
 /**
- * Lifts a simple function `A => B` into an {@link Operator}.
- * @see {@link Operator}
- * @see {@link then}
- * @category Operator
+ * Converts a `Promise` into an {@link Observable} which fires once.
+ * Any exceptions thrown while awaiting the promise will be re-thrown.
+ * If an exception is thrown the observer will definitely not be called.
+ * @category Site
+ * @public
+ * @remarks
+ * A `Promise` may be thought of as a linear Observable; an Observable may be
+ * thought of as a non-linear `Promise`.
+ * @example
+ * ```typescript
+ * const promise = keep(new Promise((resolve) => {
+ *   setTimeout(() => {
+ *     resolve("hello from 2 seconds ago");
+ *   }, 2000);
+ * }));
+ * const activity = promise.subscribe(
+ *   (msg: string) => void console.log(msg)
+ * );
+ * ```
+ * @example
+ * ```shell
+ * # prints
+ * hello from 2 seconds ago
+ * ```
+ */
+function keep<A>(promise: PromiseLike<A>): Observable<A> {
+  return new (class extends Observable<A> {
+    constructor() {
+      super((observer) => {
+        let cancelled = false;
+        promise.then((value) => {
+          if (!cancelled) {
+            observer.next(value);
+          }
+        });
+        return () => {
+          cancelled = true;
+        };
+      });
+    }
+  })();
+}
+
+/**
+ * Merges, concurrently, multiple {@link Observable | observables} into one.
+ * @category Site
+ * @param observables - The sites whose results are to b
+ * @returns An observable which executes multiple sites in parallel and merges
+ * their result values.
+ * @example
+ * ```typescript
+ * void par([
+ *   pure("A"),
+ *   pure("B"),
+ *   pure("C")
+ * ]).subscribe((v: string) => void console.log(v));
+ * ```
+ * @example
+ * ```shell
+ * A
+ * B
+ * C
+ * ```
+ */
+function par<A>(observables: Iterable<Observable<A>>): Observable<A> {
+  return new (class extends Observable<A> {
+    constructor() {
+      super((observer) => {
+        const activities: Activity[] = [];
+        for (const observable of observables) {
+          setTimeout(() => {
+            const activity = observable.subscribe(observer);
+            activities.push(activity);
+          }, 0);
+        }
+        return () => {
+          activities.slice().forEach((activity) => void activity.finish());
+        };
+      });
+    }
+  })();
+}
+
+/**
+ * A function mapping a {@link Observable} from one type to another.
+ * @category Base
  * @public
  */
-function map<A, B>(fn: (value: A, index?: number) => B): Operator<A, B> {
+interface Transformer<A, B> {
+  (s: Observable<A>): Observable<B>;
+}
+
+/**
+ * Lifts a simple function `A => B` into a {@link Transformer}.
+ * @see {@link Transformer}
+ * @see {@link then}
+ * @category Transformer
+ * @public
+ */
+function map<A, B>(fn: (value: A, index?: number) => B): Transformer<A, B> {
   return (source) =>
-    Site.shift((cont) =>
+    shift((observer) =>
       source.subscribe({
         count: 0,
         next(value: A) {
-          return cont(fn(value, this.count++));
+          return observer(fn(value, this.count++));
         }
-      } as Continuation<A, B>)
+      } as Observer<A, B>)
     );
 }
 
 /**
- * Flattens a {@link Site | Site-of-Sites} into a regular Site.
- * @see {@link Operator}
+ * Flattens an {@link Observable| nested Observable}.
+ * @see {@link Transformer}
  * @see {@link then}
- * @category Operator
+ * @category Transformer
  * @public
  */
-function join<A>(): Operator<Site<A>, A> {
+function join<A>(): Transformer<Observable<A>, A> {
   return (source) =>
-    Site.shift((cont) =>
-      source.subscribe((value: Site<A>) => value.subscribe(cont))
+    shift((observer) =>
+      source.subscribe((value: Observable<A>) => value.subscribe(observer))
     );
 }
 
 /**
  * A useful composition of {@link map} and {@link join}.
- * @see {@link Operator}
- * @category Operator
+ * @see {@link Transformer}
+ * @category Transformer
  * @public
  * @example
  * ```typescript
- * const fn = then((numList: number[]) => Site.each(numList));
- * void fn(Site.pure([1, 2, 3])).subscribe((n) => void console.log(`n = ${n}`));
+ * const fn = then((numList: number[]) => each(numList));
+ * void fn(pure([1, 2, 3])).subscribe((n) => void console.log(`n = ${n}`));
  * ```
  * @example
  * ```shell
@@ -341,40 +321,42 @@ function join<A>(): Operator<Site<A>, A> {
  * n = 3
  * ```
  */
-function then<A, B>(fn: (a: A) => Site<B>): Operator<A, B> {
+function then<A, B>(fn: (a: A) => Observable<B>): Transformer<A, B> {
   return (source) => join()(map(fn)(source));
 }
 
 /**
- * Filters out values from a {@link Site} which do not satisfy the given
+ * Filters out values from an {@link Observable} which do not satisfy the given
  * predicate.
  * @param fn - The predicate function which will test each upstream value.
- * @see {@link Operator}
- * @category Operator
+ * @see {@link Transformer}
+ * @category Transformer
  * @public
  */
-function filter<A>(fn: (value: A, index?: number) => boolean): Operator<A, A> {
+function filter<A>(
+  fn: (value: A, index?: number) => boolean
+): Transformer<A, A> {
   return (source) =>
-    Site.shift((cont) =>
+    shift((observer) =>
       source.subscribe({
         count: 0,
         next(value: A) {
           if (fn(value, this.count++)) {
-            return cont(value);
+            return observer(value);
           }
         }
-      } as Continuation<A, unknown>)
+      } as Observer<A, unknown>)
     );
 }
 
 /**
- * An {@link Operator} which commutes a {@link Site} to one result value
- * before {@link Activity.finish | finishing}.
- * @returns A new site which publishes one value.
- * @category Operator
+ * An {@link Transformer} which commutes an {@link Observable} to one result
+ * value before {@link Activity.finish | finishing}.
+ * @returns A new observable which publishes one value.
+ * @category Transformer
  * @example
  * ```typescript
- * const three = prune()(Site.each([3, 2, 1]));
+ * const three = prune()(each([3, 2, 1]));
  * void three.subscribe((n: number) => void console.log(`n = ${n}`));
  * ```
  * @example
@@ -382,38 +364,38 @@ function filter<A>(fn: (value: A, index?: number) => boolean): Operator<A, A> {
  * n = 3
  * ```
  */
-function prune<A>(): Operator<A, A> {
+function prune<A>(): Transformer<A, A> {
   return (source) =>
-    Site.shift((continuation) => {
+    shift((observer) => {
       const activity = source.subscribe((value: A): unknown => {
         activity.finish();
-        return continuation(value);
+        return observer(value);
       });
       return activity;
     });
 }
 
 /**
- * Awaits the first published value from a {@link Site} and transforms it into
- * a `Promise`.
- * The site's {@link Activity} is finished, allowing for automatic resource
- * disposal.
- * @category Operator
+ * Awaits the first published value from an {@link Observable} and transforms
+ * it into a `Promise`.
+ * The observable's {@link Activity} is finished, allowing for automatic
+ * resource disposal.
+ * @category Transformer
  */
-function reset<A>(site: Site<A>): Promise<A> {
-  const pruned: Site<A> = prune()(site);
+function reset<A>(observable: Observable<A>): Promise<A> {
+  const pruned: Observable<A> = prune()(observable);
   return new Promise<A>((resolve) => void pruned.subscribe(resolve));
 }
 
 /**
- * A {@link Channel} which relays a value to 0 or more subscribing
- * {@link Continuation | continuations}.
+ * An {@link Observable} which relays a value to 0 or more subscribing
+ * {@link Observer | observers}.
  *
- * You may stop the wire from executing by calling {@link Wire.finish}.
+ * You may stop the wire from executing by calling {@link .finish}.
  * The {@link Activity} returned by {@link Wire.subscribe | subscribing} to it
- * can be used to "unsubscribe" that continuation from the wire.
+ * can be used to "unsubscribe" that observer from the wire.
  * @see {@link Activity}
- * @see {@link Continuation}
+ * @see {@link Observer}
  * @category Base
  * @public
  * @example
@@ -440,30 +422,29 @@ function reset<A>(site: Site<A>): Promise<A> {
  * // "[listener 2] 2"
  * ```
  */
-class Wire<A> extends Channel<A> implements Activity, Continuation<A> {
+class Wire<A> extends Observable<A> implements Activity, Observer<A> {
   protected _done = false;
 
-  protected _subscribers: Continuation<A, unknown>[] = [];
+  protected _subscribers: Observer<A, unknown>[] = [];
 
   /**
-   * A Wire pushes subscribing continuations into
+   * A Wire pushes subscribing observers into
    * {@link this._subscribers | an array of subscribers}.
-   * The returned {@link Activity} will unsubscribe the continuation.
+   * The returned {@link Activity} will unsubscribe the observer.
    */
   constructor() {
-    super((continuation: Continuation<A, unknown>) => {
-      if (this.done) {
-        return;
-      }
-      this._subscribers.push(continuation);
-      return () => {
-        for (const [index, subscriber] of this._subscribers.entries()) {
-          if (subscriber === continuation) {
-            this._subscribers.splice(index, 1);
-            break;
+    super((observer: Observer<A, unknown>) => {
+      if (!this.done) {
+        this._subscribers.push(observer);
+        return () => {
+          for (const [index, subscriber] of this._subscribers.entries()) {
+            if (subscriber === observer) {
+              this._subscribers.splice(index, 1);
+              break;
+            }
           }
-        }
-      };
+        };
+      }
     });
   }
 
@@ -485,7 +466,7 @@ class Wire<A> extends Channel<A> implements Activity, Continuation<A> {
     if (!this.done) {
       this._subscribers
         .slice()
-        .forEach((cont: Continuation<A, unknown>): unknown => cont.next(value));
+        .forEach((cont: Observer<A, unknown>): unknown => cont.next(value));
     }
     return;
   }
@@ -494,13 +475,13 @@ class Wire<A> extends Channel<A> implements Activity, Continuation<A> {
 /**
  * A dynamic, time-varying value.
  * @see {@link Activity}
- * @see {@link Continuation}
+ * @see {@link Observer}
  * @see {@link Wire}
  * @category Base
  * @public
  * @example
  * ```typescript
- * const prop = new Signal<number>(0);
+ * const prop = new Behavior<number>(0);
  * prop.subscribe(() => {
  *   console.log("property updated: ", prop.value);
  * });   // prints: "property updated: 0"
@@ -508,10 +489,10 @@ class Wire<A> extends Channel<A> implements Activity, Continuation<A> {
  * prop.next(2); // "property updated: 2" ...
  * ```
  */
-class Signal<A> extends Wire<A> implements Activity, Continuation<A> {
+class Behavior<A> extends Wire<A> implements Activity, Observer<A> {
   /**
-   * A Signal is a {@link Wire} which is constructed with an initial
-   * {@link Signal.value | value}.
+   * A Behavior is a {@link Wire} which is constructed with an initial
+   * {@link Behavior.value | value}.
    */
   constructor(protected _value: A) {
     super();
@@ -523,27 +504,67 @@ class Signal<A> extends Wire<A> implements Activity, Continuation<A> {
 
   /**
    * In addition to the behavior of {@link Wire.subscribe} this immediately
-   * invokes the continuation with the {@link Signal.value | value}.
+   * invokes the observer with the {@link Behavior.value | value}.
    */
-  subscribe(continuation: Continuation<A> | ((a: A) => unknown)): Activity {
-    const activity = super.subscribe(continuation);
-    "function" === typeof continuation
-      ? continuation(this.value)
-      : continuation.next(this.value);
+  subscribe(observer: Observer<A> | ((a: A) => unknown)): Activity {
+    const activity = super.subscribe(observer);
+    "function" === typeof observer
+      ? observer(this.value)
+      : observer.next(this.value);
     return activity;
   }
 
   /**
    * In addition to the behavior of {@link Wire.next} this updates the
-   * internal {@link Signal.value | value}.
+   * internal {@link Behavior.value | value}.
    */
   next(newValue: A): unknown {
-    if (this.done) {
-      return;
+    if (!this.done) {
+      super.next((this._value = newValue));
     }
-    super.next((this._value = newValue));
+    return;
   }
+
+  /*
+  public map<B>(fn: (a: A) => B): Behavior<B> {
+    const mapped = new Behavior(fn(this.value));
+    this.subscribe(() => void mapped.next(fn(this.value)));
+    return mapped;
+  }
+
+  public fork(): Behavior<Behavior<A>> {
+    const forked = new Behavior(this);
+    this.subscribe(() => void forked.next(this));
+    return forked;
+  }
+
+  public apply<B, C>(this: Behavior<(b: B) => C>, that: Behavior<B>): Behavior<C> {
+    const applied = new Behavior(this.value(that.value));
+    this.subscribe(() => void applied.next(this.value(that.value)));
+    that.subscribe(() => void applied.next(this.value(that.value)));
+    return applied;
+  }
+
+  public thus<B>(fn: (sa: Behavior<A>) => B): Behavior<B> {
+    return this.fork().map(fn);
+  }
+  */
 }
 
-export { Site, Wire, Signal, map, join, filter, then, prune, reset };
-export type { Activity, Channel, Continuation, Operator };
+export {
+  Observable,
+  pure,
+  shift,
+  each,
+  par,
+  keep,
+  Wire,
+  Behavior,
+  map,
+  join,
+  filter,
+  then,
+  prune,
+  reset
+};
+export type { Activity, Observer, Transformer };

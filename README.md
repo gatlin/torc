@@ -24,49 +24,49 @@ npm run coverage
 ## Synopsis
 
 ```typescript
-import { Site, prune, then } from "../index";
+import { Observable, prune, then, shift, par, pure } from "../index";
 import { createInterface } from "readline";
 import { pipe } from "ts-functional-pipe";
 
 // Create a new Site publishing lines from stdin.
-const stdin = Site.shift<string>((publishLine) => {
+const stdin = shift<string>((publishLine) => {
   const iface = createInterface({ input: process.stdin });
   void iface.on("line", publishLine);
   return () => void iface.close();
 });
 
 // Publishes either `undefined` or a specified value after a given delay.
-function delayMS(delayMS: number, value?: unknown): Site<unknown> {
-  return Site.shift<unknown>((callback) => {
+function delayMS(delayMS: number, value?: unknown): Observable<unknown> {
+  return shift<unknown>((callback) => {
     const timer = setTimeout(() => void callback(value), delayMS);
     return () => void clearTimeout(timer);
   });
 }
 
 // Displays a message and publishes the first reply to stdin.
-function prompt(message: string): Site<string> {
+function prompt(message: string): Observable<string> {
   console.log(`< ${message}`);
   return prune()(stdin);
 }
 
 // Prompt which short-circuits with a default after 5 seconds.
-function impatientPrompt(message: string): Site<string> {
-  return prune()(Site.par([prompt(message), delayMS(5000)]));
+function impatientPrompt(message: string): Observable<string> {
+  return prune()(par([prompt(message), delayMS(5000)]));
 }
 
 const source = pipe(
   then(() => impatientPrompt("Name a color please: ")),
   then((color?: string) => {
     if (color) {
-      return Site.pure(color);
+      return pure(color);
     }
     console.log("5 seconds have passed. Selecting tasteful default.");
-    return Site.pure("chartreuse");
+    return pure("chartreuse");
   }),
   then((color: string) =>
-    Site.par([Site.pure("red"), Site.pure(`${color}`), Site.pure("blue")])
+    par([pure("red"), pure(`${color}`), pure("blue")])
   )
-)(Site.pure());
+)(pure());
 
 const sink = {
   counter: 0,
@@ -110,15 +110,15 @@ It might be helpful to supplement this documentation with the
 
 | Torc            | RxJS              |
 |-----------------|-------------------|
-| `Site`          | `Observable`      |
+| `Observable`    | `Observable`      |
 | `Wire`          | `Subject`         |
-| `Signal`        | `BehaviorSubject` |
-| `Continuation`  | `Observer`        |
+| `Behavior`      | `BehaviorSubject` |
+| `Observer`      | `Observer`        |
 | `Activity`      | `Subscription`    |
-| `Operator`      | `Operator` :-)    |
+| `Transformer`   | `Operator`        |
 
-The term `Site` and some the `Operator`s are inspired by the
-[Orc programming language][orclang].
+Several of the `Observable` constructors and `Transformers` names are
+inspired by the [Orc programming language][orclang].
 
 In the interest of not letting perfect be the enemy of the good - or worse yet,
 trying too hard to cram everything I want to say into this README and
