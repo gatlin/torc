@@ -32,7 +32,7 @@ function timeoutMS(
   });
 }
 
-test("a site generates an activity which finishes as expected", (t) => {
+test("an observable generates an activity which finishes as expected", (t) => {
   let total = 0;
   const s1 = shift((cont) => {
     cont(3);
@@ -54,7 +54,7 @@ test("a site generates an activity which finishes as expected", (t) => {
   a.finish();
 });
 
-test("a site also subscribes unary functions", (t) => {
+test("an observable also subscribes unary functions", (t) => {
   let total = 0;
   const s1: Observable<number> = shift((cont) => {
     cont(3);
@@ -75,7 +75,7 @@ test("a site also subscribes unary functions", (t) => {
   a.finish();
 });
 
-test("pure creates a site from a non-site value", (t) => {
+test("pure creates an observable from a non-site value", (t) => {
   const s: Observable<number> = pure(5);
   s.subscribe({
     next(five: number) {
@@ -85,7 +85,7 @@ test("pure creates a site from a non-site value", (t) => {
   }).finish();
 });
 
-test("a wire publishes its value to all clients correctly", (t) => {
+test("a wire publishes its value to all observers correctly", (t) => {
   const w1 = new Wire<number>();
   const checker = {
     count: 0,
@@ -146,7 +146,7 @@ test("a wire removes a subscriber when its activity is finished", (t) => {
   t.end();
 });
 
-test("a signal exposes its default value and updates when appropriate", (t) => {
+test("a behavior exposes its default value and updates when appropriate", (t) => {
   const sig = new Behavior<number>(4);
   t.equal(sig.value, 4);
   let counter = 0;
@@ -165,7 +165,7 @@ test("a signal exposes its default value and updates when appropriate", (t) => {
   sig.next(1);
 });
 
-test("a signal stops updating its value when finished", (t) => {
+test("a behavior stops updating its value when finished", (t) => {
   const sig = new Behavior<number>(0);
   t.equal(sig.value, 0);
   t.same(sig.done, false);
@@ -177,7 +177,7 @@ test("a signal stops updating its value when finished", (t) => {
   t.end();
 });
 
-test("a signal subscribes unary functions correctly", (t) => {
+test("a behavior subscribes unary functions correctly", (t) => {
   const sig = new Behavior<number>(4);
   t.equal(sig.value, 4);
   let counter = 0;
@@ -360,7 +360,7 @@ test("shift", (t) => {
   });
 });
 
-test("par merges multiple sites into one", (t) => {
+test("par merges multiple observables into one", (t) => {
   const s: Observable<number> = par([pure(4), pure(3), timeoutMS(3000, 1)]);
   const checker = {
     count: 0,
@@ -398,7 +398,7 @@ test("prune commutes an observable to 1 value", (t) => {
   prune()(s).subscribe(checker);
 });
 
-test("reset prunes a site and converts it into a promise", (t) => {
+test("reset prunes an observable and converts it into a promise", (t) => {
   const s: Observable<number> = each([3, 2, 1]);
   reset(s).then((value) => {
     t.equal(value, 3);

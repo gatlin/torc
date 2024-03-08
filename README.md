@@ -12,23 +12,23 @@
 
 1. Make sure you're using the correct node version (`nvm use`).
 2. Install the dependencies (`npm ci`)
-3. (optionally) Run the tests locally (`npm run coverage`).
+3. (optionally) Run the tests locally (`npm t`).
 
 ```shell
 git checkout https://github.com/gatlin/torc.git && cd torc
 nvm use
-npm ci 
-npm run coverage
+npm ci
+npm t
 ```
 
 ## Synopsis
 
 ```typescript
-import { Observable, prune, then, shift, par, pure } from "../index";
+import { Observable, prune, then, shift, each, pure } from "../index";
 import { createInterface } from "readline";
 import { pipe } from "ts-functional-pipe";
 
-// Create a new Site publishing lines from stdin.
+// Create a new Observable publishing lines from stdin.
 const stdin = shift<string>((publishLine) => {
   const iface = createInterface({ input: process.stdin });
   void iface.on("line", publishLine);
@@ -64,7 +64,7 @@ const source = pipe(
     return pure("chartreuse");
   }),
   then((color: string) =>
-    par([pure("red"), pure(`${color}`), pure("blue")])
+    each(["red", `${color}`, "blue"])
   )
 )(pure());
 

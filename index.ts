@@ -71,8 +71,8 @@ class Observable<A> {
           }
         }
       : "function" === typeof finish
-      ? { finish }
-      : finish;
+        ? { finish }
+        : finish;
   }
 }
 
@@ -227,6 +227,7 @@ function keep<A>(promise: PromiseLike<A>): Observable<A> {
  * @param observables - The sites whose results are to b
  * @returns An observable which executes multiple sites in parallel and merges
  * their result values.
+ * @public
  * @example
  * ```typescript
  * void par([
@@ -290,7 +291,7 @@ function map<A, B>(fn: (value: A, index?: number) => B): Transformer<A, B> {
 }
 
 /**
- * Flattens an {@link Observable| nested Observable}.
+ * Flattens a {@link Observable| nested Observable}.
  * @see {@link Transformer}
  * @see {@link then}
  * @category Transformer
@@ -354,6 +355,7 @@ function filter<A>(
  * value before {@link Activity.finish | finishing}.
  * @returns A new observable which publishes one value.
  * @category Transformer
+ * @public
  * @example
  * ```typescript
  * const three = prune()(each([3, 2, 1]));
@@ -381,6 +383,7 @@ function prune<A>(): Transformer<A, A> {
  * The observable's {@link Activity} is finished, allowing for automatic
  * resource disposal.
  * @category Transformer
+ * @public
  */
 function reset<A>(observable: Observable<A>): Promise<A> {
   const pruned: Observable<A> = prune()(observable);
@@ -524,31 +527,6 @@ class Behavior<A> extends Wire<A> implements Activity, Observer<A> {
     }
     return;
   }
-
-  /*
-  public map<B>(fn: (a: A) => B): Behavior<B> {
-    const mapped = new Behavior(fn(this.value));
-    this.subscribe(() => void mapped.next(fn(this.value)));
-    return mapped;
-  }
-
-  public fork(): Behavior<Behavior<A>> {
-    const forked = new Behavior(this);
-    this.subscribe(() => void forked.next(this));
-    return forked;
-  }
-
-  public apply<B, C>(this: Behavior<(b: B) => C>, that: Behavior<B>): Behavior<C> {
-    const applied = new Behavior(this.value(that.value));
-    this.subscribe(() => void applied.next(this.value(that.value)));
-    that.subscribe(() => void applied.next(this.value(that.value)));
-    return applied;
-  }
-
-  public thus<B>(fn: (sa: Behavior<A>) => B): Behavior<B> {
-    return this.fork().map(fn);
-  }
-  */
 }
 
 export {
