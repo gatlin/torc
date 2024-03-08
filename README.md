@@ -24,7 +24,7 @@ npm t
 ## Synopsis
 
 ```typescript
-import { Observable, prune, then, shift, each, pure } from "../index";
+import { Observable, prune, then, shift, each, pure, par } from "../index";
 import { createInterface } from "readline";
 import { pipe } from "ts-functional-pipe";
 
