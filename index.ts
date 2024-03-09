@@ -6,7 +6,6 @@
 /**
  * Represents an ongoing computation, behavior, or process which may be halted
  * at any time with the {@link Activity.finish} method.
- * @category Base
  * @public
  */
 interface Activity {
@@ -20,7 +19,6 @@ interface Activity {
 /**
  * A suspended function closure interface.
  * Intended to be compatible with prior art.
- * @category Base
  * @public
  */
 interface Observer<A, B = void> {
@@ -33,18 +31,14 @@ interface Observer<A, B = void> {
 
  * An {@link Observable | `Observable<A>`} for some type `A` defines a
  * *double negation* of values of type `A`.
- * As such its {@link Observable.constructor | constructor} is protected to prevent
- * misuse.
- * Instead, it is used to define other classes.
  *
  * @see {@link Wire} a sub-class for event broadcasting.
  * @see {@link Behavior} for a dynamic store (as seen in Svelte).
  * @typeParam A - the value type published by this Observable.
- * @category Base
  * @internal
  */
 class Observable<A> {
-  protected constructor(
+  constructor(
     private _action: (c: Observer<A, unknown>) => Activity | (() => void) | void
   ) {}
 
@@ -79,7 +73,6 @@ class Observable<A> {
 /**
  * Lifts an arbitrary value of any type into an {@link Observable} of that type
  * which will publish immediately exactly one time.
- * @category Site
  * @public
  * @example
  * ```typescript
@@ -95,18 +88,13 @@ class Observable<A> {
  * ```
  */
 function pure<A>(value?: A): Observable<A> {
-  return new (class extends Observable<A> {
-    constructor() {
-      super((observer: Observer<typeof value>) => observer.next(value));
-    }
-  })();
+  return new Observable((observer: Observer<A>) => observer.next(value));
 }
 
 /**
  * Construct an Observable using a (delimited) continuation-passing idiom.
  * @param fn - A function whose argument is a delimited continuation.
  * @returns An {@link Observable}.
- * @category Site
  * @experimental
  * @example
  * ```typescript
@@ -128,17 +116,12 @@ function pure<A>(value?: A): Observable<A> {
  * ```
  */
 function shift<A>(fn: (k: (value: A) => unknown) => void): Observable<A> {
-  return new (class extends Observable<A> {
-    constructor() {
-      super((observer) => fn((value: A) => observer.next(value)));
-    }
-  })();
+  return new Observable((observer) => fn((value) => observer.next(value)));
 }
 
 /**
  * Create an {@link Observable} which publishes each value of an `Iterable`
  * object.
- * @category Site
  * @public
  * @example
  * ```typescript
@@ -156,32 +139,27 @@ function shift<A>(fn: (k: (value: A) => unknown) => void): Observable<A> {
  *```
  */
 function each<A>(it: Iterable<A>): Observable<A> {
-  return new (class extends Observable<A> {
-    constructor() {
-      super((observer) => {
-        let cancelled = false;
-        void setTimeout(() => {
-          for (const value of it) {
-            if (cancelled) {
-              break;
-            } else {
-              observer.next(value);
-            }
-          }
-        }, 0);
-        return () => {
-          cancelled = true;
-        };
-      });
-    }
-  })();
+  return new Observable((observer) => {
+    let cancelled = false;
+    void setTimeout(() => {
+      for (const value of it) {
+        if (cancelled) {
+          break;
+        } else {
+          observer.next(value);
+        }
+      }
+    }, 0);
+    return () => {
+      cancelled = true;
+    };
+  });
 }
 
 /**
  * Converts a `Promise` into an {@link Observable} which fires once.
  * Any exceptions thrown while awaiting the promise will be re-thrown.
  * If an exception is thrown the observer will definitely not be called.
- * @category Site
  * @public
  * @remarks
  * A `Promise` may be thought of as a linear Observable; an Observable may be
@@ -204,26 +182,21 @@ function each<A>(it: Iterable<A>): Observable<A> {
  * ```
  */
 function keep<A>(promise: PromiseLike<A>): Observable<A> {
-  return new (class extends Observable<A> {
-    constructor() {
-      super((observer) => {
-        let cancelled = false;
-        promise.then((value) => {
-          if (!cancelled) {
-            observer.next(value);
-          }
-        });
-        return () => {
-          cancelled = true;
-        };
-      });
-    }
-  })();
+  return new Observable((observer) => {
+    let cancelled = false;
+    promise.then((value) => {
+      if (!cancelled) {
+        observer.next(value);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  });
 }
 
 /**
  * Merges, concurrently, multiple {@link Observable | observables} into one.
- * @category Site
  * @param observables - The sites whose results are to b
  * @returns An observable which executes multiple sites in parallel and merges
  * their result values.
@@ -244,27 +217,22 @@ function keep<A>(promise: PromiseLike<A>): Observable<A> {
  * ```
  */
 function par<A>(observables: Iterable<Observable<A>>): Observable<A> {
-  return new (class extends Observable<A> {
-    constructor() {
-      super((observer) => {
-        const activities: Activity[] = [];
-        for (const observable of observables) {
-          setTimeout(() => {
-            const activity = observable.subscribe(observer);
-            activities.push(activity);
-          }, 0);
-        }
-        return () => {
-          activities.slice().forEach((activity) => void activity.finish());
-        };
-      });
+  return new Observable((observer) => {
+    const activities: Activity[] = [];
+    for (const observable of observables) {
+      setTimeout(() => {
+        const activity = observable.subscribe(observer);
+        activities.push(activity);
+      }, 0);
     }
-  })();
+    return () => {
+      activities.slice().forEach((activity) => void activity.finish());
+    };
+  });
 }
 
 /**
  * A function mapping a {@link Observable} from one type to another.
- * @category Base
  * @public
  */
 interface Transformer<A, B> {
@@ -275,7 +243,6 @@ interface Transformer<A, B> {
  * Lifts a simple function `A => B` into a {@link Transformer}.
  * @see {@link Transformer}
  * @see {@link then}
- * @category Transformer
  * @public
  */
 function map<A, B>(fn: (value: A, index?: number) => B): Transformer<A, B> {
@@ -294,7 +261,6 @@ function map<A, B>(fn: (value: A, index?: number) => B): Transformer<A, B> {
  * Flattens a {@link Observable| nested Observable}.
  * @see {@link Transformer}
  * @see {@link then}
- * @category Transformer
  * @public
  */
 function join<A>(): Transformer<Observable<A>, A> {
@@ -307,7 +273,6 @@ function join<A>(): Transformer<Observable<A>, A> {
 /**
  * A useful composition of {@link map} and {@link join}.
  * @see {@link Transformer}
- * @category Transformer
  * @public
  * @example
  * ```typescript
@@ -331,7 +296,6 @@ function then<A, B>(fn: (a: A) => Observable<B>): Transformer<A, B> {
  * predicate.
  * @param fn - The predicate function which will test each upstream value.
  * @see {@link Transformer}
- * @category Transformer
  * @public
  */
 function filter<A>(
@@ -354,7 +318,6 @@ function filter<A>(
  * An {@link Transformer} which commutes an {@link Observable} to one result
  * value before {@link Activity.finish | finishing}.
  * @returns A new observable which publishes one value.
- * @category Transformer
  * @public
  * @example
  * ```typescript
@@ -382,7 +345,6 @@ function prune<A>(): Transformer<A, A> {
  * it into a `Promise`.
  * The observable's {@link Activity} is finished, allowing for automatic
  * resource disposal.
- * @category Transformer
  * @public
  */
 function reset<A>(observable: Observable<A>): Promise<A> {
@@ -399,7 +361,6 @@ function reset<A>(observable: Observable<A>): Promise<A> {
  * can be used to "unsubscribe" that observer from the wire.
  * @see {@link Activity}
  * @see {@link Observer}
- * @category Base
  * @public
  * @example
  * ```
@@ -480,7 +441,6 @@ class Wire<A> extends Observable<A> implements Activity, Observer<A> {
  * @see {@link Activity}
  * @see {@link Observer}
  * @see {@link Wire}
- * @category Base
  * @public
  * @example
  * ```typescript

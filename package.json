@@ -1,6 +1,6 @@
 {
   "name": "torc",
-  "version": "4.0.1",
+  "version": "4.1.0",
   "description": "tools for working with asynchronous and reactive computations",
   "main": "./dist/commonjs/index.js",
   "module": "./dist/esm/index.js",
